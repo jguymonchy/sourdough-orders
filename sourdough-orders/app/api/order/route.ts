@@ -137,31 +137,33 @@ export async function POST(req: Request) {
       notes: firstNonEmpty(raw.notes) ?? null,
     };
 
-    // -------- save to Supabase (matches your existing columns) --------
-    const { data, error } = await supabase
-      .from("orders")
-      .insert({
-        customer_name: order.customerName, // NOT NULL in your schema
-        email: order.customerEmail,
-        phone: order.phone,
-        ship: order.ship ?? true,
-        address1: order.address1,
-        address2: order.address2,
-        city: order.city,
-        state: order.state,
-        postal_code: order.postalCode,
-        country: order.country ?? "USA",
-        items: order.items,
-        notes: order.notes,
-        status: "new",
-      })
-      .select()
-      .single();
+  // -------- SAVE TO SUPABASE (matches your existing columns) --------
+const { data, error } = await supabase
+  .from("orders")
+  .insert({
+    customer_name: order.customerName,   // NOT NULL
+    email: order.customerEmail,
+    phone: order.phone,
+    ship: order.ship ?? true,
+    address_line1: order.address1,       // 👈 underscore names
+    address_line2: order.address2,       // 👈 underscore names
+    city: order.city,
+    state: order.state,
+    postal_code: order.postalCode,
+    country: order.country ?? "USA",
+    items: order.items ?? [],            // jsonb NOT NULL
+    notes: order.notes,
+    status: "new",
+  })
+  .select()
+  .single();
 
-    if (error) {
-      console.error("Supabase insert error:", error);
-      return NextResponse.json({ error: "Failed to save order." }, { status: 500 });
-    }
+if (error) {
+  console.error("Supabase insert error:", error);
+  // Surface the real error so we can see what's wrong without guessing
+  return NextResponse.json({ error: `Failed to save order: ${error.message}` }, { status: 500 });
+}
+
 
     // -------- send confirmation email (customer + you) --------
     const origin = new URL(req.url).origin;
