@@ -97,27 +97,10 @@ if (inserted.email) {
   });
 }
 
+return NextResponse.json({ ok: true });
+  }
 
 
-   // right above emails (once)
-const siteName = process.env.NEXT_PUBLIC_SITE_NAME || 'Sourdough Orders'
-const adminTo  = process.env.ADMIN_NOTIFY_EMAIL || process.env.NEXT_PUBLIC_FROM_EMAIL || 'orders@example.com'
-
-// ...you keep your admin email send here
-
-// confirmation to customer (if email provided)
-if (inserted.email) {
-  const customerHtml = `
-    <p>Thanks, ${inserted.customer_name}! We received your order.</p>
-    ${html}
-  `
-  await sendOrderEmail({
-    to: inserted.email,
-    subject: `Thanks for your order — ${siteName}`,
-    html: customerHtml,
-    replyTo: adminTo,             // replies go to you
-  })
-}
 
 
 export async function GET(req: NextRequest) {
