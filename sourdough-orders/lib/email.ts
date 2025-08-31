@@ -1,34 +1,43 @@
 // lib/email.ts
-import { Resend } from 'resend'
+import { Resend } from 'resend';
 
-const resend = new Resend(process.env.RESEND_API_KEY!)
-const fromEmail = process.env.NEXT_PUBLIC_FROM_EMAIL || 'onboarding@resend.dev'
-const fromName  = process.env.NEXT_PUBLIC_SITE_NAME || 'Sourdough Orders'
+const resend = new Resend(process.env.RESEND_API_KEY!);
 
-export async function sendOrderEmail(opts: {
-  to: string
-  subject: string
-  html: string
-  replyTo?: string
-}) {
-  const { to, subject, html, replyTo } = opts
+const fromEmail =
+  process.env.NEXT_PUBLIC_FROM_EMAIL || 'onboarding@resend.dev';
+const fromName =
+  process.env.NEXT_PUBLIC_SITE_NAME || 'Sourdough Orders';
 
-  console.log('[email] sending', { to, subject, replyTo })
+type SendOpts = {
+  to: string | string[];
+  subject: string;
+  html: string;
+  replyTo?: string; // optional
+};
 
-  const { error, data } = await resend.emails.send({
+export async function sendOrderEmail(opts: SendOpts) {
+  const { to, subject, html, replyTo } = opts;
+
+  // Build payload in a way that works with any Resend SDK version
+  const payload: any = {
     from: `${fromName} <${fromEmail}>`,
     to,
     subject,
     html,
-    // Resend uses `reply_to`
-    reply_to: replyTo,
-  })
+  };
 
-  if (error) {
-    console.error('[email] resend error', error)
-    throw error
+  if (replyTo) {
+    // Newer SDKs use snake_case, older used camelCase.
+    payload.reply_to = replyTo;
+    payload.replyTo = replyTo;
+    // Ultimate fallback—most providers honor this header:
+    payload.headers = { 'Reply-To': replyTo };
   }
 
-  console.log('[email] resend accepted', { id: data?.id })
+  const { error } = await resend.emails.send(payload);
+  if (error) {
+    // surface the error in Vercel Runtime Logs
+    console.error('Resend error:', error);
+    throw new Error(JSON.stringify(error));
+  }
 }
-
