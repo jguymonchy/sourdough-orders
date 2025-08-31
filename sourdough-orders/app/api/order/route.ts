@@ -52,26 +52,50 @@ export async function POST(req: NextRequest) {
 
     if (error) throw error
 
-// email you (send to your real inbox)
+// -------- Email setup (used for both emails) --------
+const siteName =
+  process.env.NEXT_PUBLIC_SITE_NAME || 'Sourdough Orders';
+
 const adminTo =
   process.env.ADMIN_NOTIFY_EMAIL ||
   process.env.NEXT_PUBLIC_FROM_EMAIL ||
-  'orders@example.com'
+  'orders@example.com';
 
-const subject = `New Order: ${inserted.customer_name}`
+// Build the admin email body (you already had this `html`)
+const subject = `New Order: ${inserted.customer_name}`;
 const html = `
   <h2>New order</h2>
   <p><strong>Name:</strong> ${inserted.customer_name}</p>
-  <p><strong>Email:</strong> ${inserted.email || ''} | <strong>Phone:</strong> ${inserted.phone || ''}</p>
+  <p><strong>Email:</strong> ${inserted.email || ''}  | <strong>Phone:</strong> ${inserted.phone || ''}</p>
   <p><strong>Ship:</strong> ${inserted.ship ? 'Yes' : 'No'}</p>
-  ${inserted.ship ? `<p><strong>Address:</strong> ${[inserted.address_line1, inserted.address_line2, inserted.city, inserted.state, inserted.postal_code, inserted.country].filter(Boolean).join(', ')}</p>` : ''}
+  <p><strong>Address:</strong> ${[inserted.address_line1, inserted.address_line2, inserted.city, inserted.state, inserted.postal_code, inserted.country].filter(Boolean).join(', ')}</p>
   <p><strong>Items:</strong></p>
   <ul>${(inserted.items || []).map((i:any) => `<li>${i.name} x ${i.qty}</li>`).join('')}</ul>
   <p><strong>Notes:</strong> ${inserted.notes || ''}</p>
   <p><small>Order ID: ${inserted.id} | ${inserted.created_at}</small></p>
-`
+`;
 
-await sendOrderEmail({ to: adminTo, subject, html })
+// 1) Email to YOU (admin). Optional: reply goes to customer.
+await sendOrderEmail({
+  to: adminTo,
+  subject,
+  html,
+  replyTo: inserted.email || undefined,
+});
+
+// 2) Confirmation to CUSTOMER (only if they provided an email)
+if (inserted.email) {
+  const customerHtml = `
+    <p>Thanks, ${inserted.customer_name}! We received your order.</p>
+    ${html}
+  `;
+  await sendOrderEmail({
+    to: inserted.email,
+    subject: `Thanks for your order — ${siteName}`,
+    html: customerHtml,
+    replyTo: adminTo, // customer replies go to you
+  });
+}
 
 
 
