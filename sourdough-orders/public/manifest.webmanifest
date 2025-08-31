@@ -1,6 +1,6 @@
 {
   "name": "Kanarra Heights Homestead",
-  "short_name": "Sourdough Orders",
+  "short_name": "Artisan Sourdough Bread",
   "start_url": "/order",
   "scope": "/",
   "display": "standalone",
