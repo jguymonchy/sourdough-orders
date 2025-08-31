@@ -6,25 +6,35 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 
 export async function POST(req: Request) {
   try {
-    const { to, subject, html } = await req.json();
+    const body = await req.json();
 
-    if (!to || (Array.isArray(to) && to.length === 0)) {
-      return NextResponse.json({ error: "Missing 'to' address" }, { status: 400 });
-    }
+    const fromName =
+      body.fromName ||
+      (typeof body.from === "string" ? body.from.split("<")[0].trim() : null) ||
+      "Kanarra Heights Homestead";
+
+    const fromAddress =
+      (typeof body.from === "string" && body.from.includes("<"))
+        ? body.from
+        : `${fromName} <${process.env.FROM_EMAIL}>`;
 
     const { data, error } = await resend.emails.send({
-      from: `${(body.fromName || "Kanarra Heights Homestead")} <${process.env.FROM_EMAIL}>`,
-      to: Array.isArray(to) ? to : [to], // always make it an array
-      subject: subject ?? "Thanks for your order!",
-      html: html ?? "<p>Order received — thanks!</p>",
+      from: fromAddress,                    // <- uses our brand name
+      to: body.to,                          // string | string[]
+      subject: body.subject,
+      html: body.html,
+      // optional:
+      reply_to: body.replyTo || process.env.FROM_EMAIL,
     });
 
     if (error) {
-      return NextResponse.json({ error }, { status: 400 });
+      console.error("Resend error:", error);
+      return NextResponse.json({ error: String(error) }, { status: 500 });
     }
 
-    return NextResponse.json({ id: data?.id }, { status: 200 });
+    return NextResponse.json({ id: data?.id || null }, { status: 200 });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message ?? "Unknown error" }, { status: 500 });
+    console.error("send-email route error:", e);
+    return NextResponse.json({ error: e?.message ?? "Unknown error" }, { status: 500 });
   }
 }
