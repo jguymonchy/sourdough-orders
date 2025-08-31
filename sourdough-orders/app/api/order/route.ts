@@ -87,18 +87,21 @@ if (inserted.email) {
     <p>Thanks, ${inserted.customer_name}! We received your order.</p>
     ${html}
   `;
+  console.log('➡️ sending customer email to', inserted.email);
 
-  await sendOrderEmail({
-    to: inserted.email,
-    subject: `Thanks for your order – ${siteName}`,
-    html: customerHtml,
-    // customer replies go to you:
-    replyTo: adminTo,
-  });
+  try {
+    await sendOrderEmail({
+      to: inserted.email,
+      subject: `Thanks for your order – ${siteName}`,
+      html: customerHtml,
+      replyTo: adminTo, // replies go to you
+    });
+    console.log('✅ customer email sent');
+  } catch (e) {
+    console.error('❌ customer email failed', e);
+  }
 }
 
-return NextResponse.json({ ok: true });
-  }
 
 
 
