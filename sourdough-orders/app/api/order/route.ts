@@ -75,20 +75,26 @@ await sendOrderEmail({ to: adminTo, subject, html })
 
 
 
-    // confirmation to customer (if email provided)
-    if (inserted.email) {
-      await sendOrderEmail({
-        to: inserted.email,
-        subject: `Thanks for your order – ${process.env.NEXT_PUBLIC_SITE_NAME || 'Sourdough Orders'}`,
-        html: `<p>Thanks, ${inserted.customer_name}! We received your order:</p>${html}`
-      })
-    }
+   // right above emails (once)
+const siteName = process.env.NEXT_PUBLIC_SITE_NAME || 'Sourdough Orders'
+const adminTo  = process.env.ADMIN_NOTIFY_EMAIL || process.env.NEXT_PUBLIC_FROM_EMAIL || 'orders@example.com'
 
-    return NextResponse.json({ ok: true })
-  } catch (e:any) {
-    return new NextResponse(e.message || 'Bad Request', { status: 400 })
-  }
+// ...you keep your admin email send here
+
+// confirmation to customer (if email provided)
+if (inserted.email) {
+  const customerHtml = `
+    <p>Thanks, ${inserted.customer_name}! We received your order.</p>
+    ${html}
+  `
+  await sendOrderEmail({
+    to: inserted.email,
+    subject: `Thanks for your order — ${siteName}`,
+    html: customerHtml,
+    replyTo: adminTo,             // replies go to you
+  })
 }
+
 
 export async function GET(req: NextRequest) {
   // Admin list endpoint (protected by middleware)
