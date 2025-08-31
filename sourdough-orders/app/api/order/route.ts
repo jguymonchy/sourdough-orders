@@ -52,10 +52,8 @@ export async function POST(req: NextRequest) {
 
     if (error) throw error
 
-// -------- Email setup (used for both emails) --------
-const siteName =
-  process.env.NEXT_PUBLIC_SITE_NAME || 'Sourdough Orders';
-
+// ---------- Email setup (used for both emails) ----------
+const siteName = process.env.NEXT_PUBLIC_SITE_NAME || 'Sourdough Orders';
 const adminTo =
   process.env.ADMIN_NOTIFY_EMAIL ||
   process.env.NEXT_PUBLIC_FROM_EMAIL ||
@@ -66,7 +64,7 @@ const subject = `New Order: ${inserted.customer_name}`;
 const html = `
   <h2>New order</h2>
   <p><strong>Name:</strong> ${inserted.customer_name}</p>
-  <p><strong>Email:</strong> ${inserted.email || ''}  | <strong>Phone:</strong> ${inserted.phone || ''}</p>
+  <p><strong>Email:</strong> ${inserted.email || ''} | <strong>Phone:</strong> ${inserted.phone || ''}</p>
   <p><strong>Ship:</strong> ${inserted.ship ? 'Yes' : 'No'}</p>
   <p><strong>Address:</strong> ${[inserted.address_line1, inserted.address_line2, inserted.city, inserted.state, inserted.postal_code, inserted.country].filter(Boolean).join(', ')}</p>
   <p><strong>Items:</strong></p>
@@ -75,7 +73,7 @@ const html = `
   <p><small>Order ID: ${inserted.id} | ${inserted.created_at}</small></p>
 `;
 
-// 1) Email to YOU (admin). Optional: reply goes to customer.
+// 1) Email to YOU (admin). Optional: reply goes to customer if they provided an email.
 await sendOrderEmail({
   to: adminTo,
   subject,
@@ -89,11 +87,13 @@ if (inserted.email) {
     <p>Thanks, ${inserted.customer_name}! We received your order.</p>
     ${html}
   `;
+
   await sendOrderEmail({
     to: inserted.email,
-    subject: `Thanks for your order — ${siteName}`,
+    subject: `Thanks for your order – ${siteName}`,
     html: customerHtml,
-    replyTo: adminTo, // customer replies go to you
+    // customer replies go to you:
+    replyTo: adminTo,
   });
 }
 
