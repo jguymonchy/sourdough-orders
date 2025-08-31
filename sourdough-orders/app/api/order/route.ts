@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
       .from('orders')
       .insert({
         customer_name: data.customer_name,
-        email: data.email?.trim() || null
+        email: data.email?.trim() || null,
         phone: data.phone || null,
         ship: data.ship,
         address_line1: data.address_line1 || null,
