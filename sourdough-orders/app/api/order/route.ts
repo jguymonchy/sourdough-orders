@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { getSupabaseAdmin } from '@/lib/supabase'
-import { sendOrderEmail } from '@/lib/email'
+import { getSupabaseAdmin } from '../../../lib/supabase'
+import { sendOrderEmail } from '../../../lib/email'
+
 
 const ItemSchema = z.object({
   sku: z.string(),
