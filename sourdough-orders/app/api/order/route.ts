@@ -31,6 +31,22 @@ type IncomingOrder = {
   notes?: string;
 };
 
+// -------- helpers --------
+const toTitle = (s: string) =>
+  s.replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase()
+    .replace(/\b\w/g, (m) => m.toUpperCase());
+
+const inferNameFromEmail = (email: string) => {
+  const local = email.split("@")[0] ?? "";
+  if (!local) return "Customer";
+  // john.guy-monch -> John Guy Monch
+  const cleaned = local.replace(/[._-]+/g, " ");
+  return toTitle(cleaned);
+};
+
+// Basic receipt HTML
 function renderReceiptHtml(order: IncomingOrder & { id?: string }) {
   const itemsHtml =
     order.items?.map(
@@ -46,7 +62,7 @@ function renderReceiptHtml(order: IncomingOrder & { id?: string }) {
 
   return `
   <div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.45;color:#222">
-    <h1 style="margin:0 0 8px">Thanks for your order${order.customerName ? `, ${order.customerName}` : ""}!</h1>
+    <h1 style="margin:0 0 8px">Thanks for your order, ${order.customerName}!</h1>
     ${order.id ? `<p style="margin:0 0 12px">Order #${order.id}</p>` : ""}
     <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:12px 0 4px;width:100%">
       <thead>
@@ -67,23 +83,35 @@ export async function POST(req: Request) {
   try {
     const raw = await req.json();
 
-    // -------- NORMALIZE INCOMING FIELDS --------
+    // -------- NORMALIZE INCOMING FIELDS (very forgiving) --------
+    const email: string =
+      raw.customerEmail ??
+      raw.email ??
+      raw?.contact?.email ??
+      "";
+
+    // Try a bunch of common name keys; if none, infer from email.
+    let name: string =
+      raw.customerName ??
+      raw.name ??
+      raw.fullName ??
+      raw.full_name ??
+      (raw.firstName && raw.lastName ? `${raw.firstName} ${raw.lastName}` : "") ??
+      (raw.first_name && raw.last_name ? `${raw.first_name} ${raw.last_name}` : "") ??
+      raw?.contact?.name ??
+      "";
+
+    if (!name || !String(name).trim()) {
+      if (email) name = inferNameFromEmail(String(email));
+      if (!name) name = "Customer";
+    }
+
     const order: IncomingOrder = {
-      // accept several possible field names from your form
-      customerEmail:
-        raw.customerEmail ??
-        raw.email ??
-        raw?.contact?.email ??
-        "",
-      customerName:
-        raw.customerName ??
-        raw.name ??
-        raw?.contact?.name ??
-        "",
+      customerEmail: String(email).trim(),
+      customerName: String(name).trim(),
       phone: raw.phone ?? raw?.contact?.phone ?? null,
       ship: raw.ship ?? true,
 
-      // addresses (accept multiple shapes)
       address1: raw.address1 ?? raw.addressLine1 ?? raw.street ?? null,
       address2: raw.address2 ?? raw.addressLine2 ?? null,
       city: raw.city ?? null,
@@ -91,19 +119,14 @@ export async function POST(req: Request) {
       postalCode: raw.postalCode ?? raw.zip ?? null,
       country: raw.country ?? "USA",
 
-      // order lines
       items: Array.isArray(raw.items) ? raw.items : [],
 
-      // extra
       notes: raw.notes ?? null,
     };
 
-    // -------- VALIDATION --------
+    // -------- VALIDATION (email required; name now safely defaulted) --------
     if (!order.customerEmail || typeof order.customerEmail !== "string" || !order.customerEmail.trim()) {
       return NextResponse.json({ error: "Missing 'customerEmail'." }, { status: 400 });
-    }
-    if (!order.customerName || typeof order.customerName !== "string" || !order.customerName.trim()) {
-      return NextResponse.json({ error: "Missing 'customerName'." }, { status: 400 });
     }
     if (!Array.isArray(order.items)) {
       return NextResponse.json({ error: "'items' must be an array." }, { status: 400 });
@@ -113,7 +136,7 @@ export async function POST(req: Request) {
     const { data, error } = await supabase
       .from("orders")
       .insert({
-        customer_name: order.customerName,
+        customer_name: order.customerName,   // NOT NULL in your schema
         email: order.customerEmail,
         phone: order.phone ?? null,
         ship: order.ship ?? true,
@@ -123,7 +146,7 @@ export async function POST(req: Request) {
         state: order.state ?? null,
         postal_code: order.postalCode ?? null,
         country: order.country ?? "USA",
-        items: order.items,
+        items: order.items ?? [],
         notes: order.notes ?? null,
         status: "new",
       })
