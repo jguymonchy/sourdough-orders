@@ -52,22 +52,27 @@ export async function POST(req: NextRequest) {
 
     if (error) throw error
 
-    // email you
-    const to = process.env.NEXT_PUBLIC_FROM_EMAIL || 'orders@example.com'
-    const subject = `New Order: ${inserted.customer_name}`
-    const html = `
-      <h2>New order</h2>
-      <p><strong>Name:</strong> ${inserted.customer_name}</p>
-      <p><strong>Email:</strong> ${inserted.email || ''} | <strong>Phone:</strong> ${inserted.phone || ''}</p>
-      <p><strong>Ship:</strong> ${inserted.ship ? 'Yes' : 'No'}</p>
-      ${inserted.ship ? `
-      <p><strong>Address:</strong> ${[inserted.address_line1, inserted.address_line2, inserted.city, inserted.state, inserted.postal_code, inserted.country].filter(Boolean).join(', ')}</p>`: ''}
-      <p><strong>Items:</strong></p>
-      <ul>${(inserted.items || []).map((i:any) => `<li>${i.name} x ${i.qty}</li>`).join('')}</ul>
-      <p><strong>Notes:</strong> ${inserted.notes || ''}</p>
-      <p><small>Order ID: ${inserted.id} | ${inserted.created_at}</small></p>
-    `
-    await sendOrderEmail({ to, subject, html })
+   // email you (send to your real inbox)
+const adminTo =
+  process.env.ADMIN_NOTIFY_EMAIL ||
+  process.env.NEXT_PUBLIC_FROM_EMAIL ||
+  'orders@example.com'
+
+const subject = `New Order: ${inserted.customer_name}`
+const html = `
+  <h2>New order</h2>
+  <p><strong>Name:</strong> ${inserted.customer_name}</p>
+  <p><strong>Email:</strong> ${inserted.email || ''} | <strong>Phone:</strong> ${inserted.phone || ''}</p>
+  <p><strong>Ship:</strong> ${inserted.ship ? 'Yes' : 'No'}</p>
+  ${inserted.ship ? `
+  <p><strong>Address:</strong> ${[inserted.address_line1, inserted.address_line2, inserted.city, inserted.state, inserted.postal_code, inserted.country].filter(Boolean).join(', ')}</p>` : ''}
+  <p><strong>Items:</strong></p>
+  <ul>${(inserted.items || []).map((i:any) => `<li>${i.name} x ${i.qty}</li>`).join('')}</ul>
+  <p><strong>Notes:</strong> ${inserted.notes || ''}</p>
+  <p><small>Order ID: ${inserted.id} | ${inserted.created_at}</small></p>
+`
+await sendOrderEmail({ to: adminTo, subject, html })
+
 
     // confirmation to customer (if email provided)
     if (inserted.email) {
