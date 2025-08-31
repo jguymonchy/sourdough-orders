@@ -1,7 +1,6 @@
 // lib/email.ts
 import { Resend } from 'resend'
 
-// Uses your Vercel env vars
 const resend = new Resend(process.env.RESEND_API_KEY!)
 const fromEmail = process.env.NEXT_PUBLIC_FROM_EMAIL || 'onboarding@resend.dev'
 const fromName  = process.env.NEXT_PUBLIC_SITE_NAME || 'Sourdough Orders'
@@ -14,17 +13,22 @@ export async function sendOrderEmail(opts: {
 }) {
   const { to, subject, html, replyTo } = opts
 
-  const { error } = await resend.emails.send({
+  console.log('[email] sending', { to, subject, replyTo })
+
+  const { error, data } = await resend.emails.send({
     from: `${fromName} <${fromEmail}>`,
     to,
     subject,
     html,
-    // This is the important line that wires through reply-to:
+    // Resend uses `reply_to`
     reply_to: replyTo,
   })
 
   if (error) {
-    console.error('Resend error:', error)
-    throw new Error(JSON.stringify(error))
+    console.error('[email] resend error', error)
+    throw error
   }
+
+  console.log('[email] resend accepted', { id: data?.id })
 }
+
