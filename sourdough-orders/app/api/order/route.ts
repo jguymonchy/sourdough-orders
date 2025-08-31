@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
 
     if (error) throw error
 
-   // email you (send to your real inbox)
+ // email you (send to your real inbox)
 const adminTo =
   process.env.ADMIN_NOTIFY_EMAIL ||
   process.env.NEXT_PUBLIC_FROM_EMAIL ||
@@ -72,6 +72,7 @@ const html = `
   <p><small>Order ID: ${inserted.id} | ${inserted.created_at}</small></p>
 `
 await sendOrderEmail({ to: adminTo, subject, html })
+
 
 
     // confirmation to customer (if email provided)
