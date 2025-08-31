@@ -13,7 +13,7 @@ export async function POST(req: Request) {
     }
 
     const { data, error } = await resend.emails.send({
-      from: `FieldLux Orders <${process.env.FROM_EMAIL!}>`,
+      from: `${(body.fromName || "Kanarra Heights Homestead")} <${process.env.FROM_EMAIL}>`,
       to: Array.isArray(to) ? to : [to], // always make it an array
       subject: subject ?? "Thanks for your order!",
       html: html ?? "<p>Order received — thanks!</p>",
