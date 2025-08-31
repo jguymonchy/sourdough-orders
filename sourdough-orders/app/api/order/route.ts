@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
       .from('orders')
       .insert({
         customer_name: data.customer_name,
-        email: data.email || null,
+        email: data.email?.trim() || null
         phone: data.phone || null,
         ship: data.ship,
         address_line1: data.address_line1 || null,
@@ -59,48 +59,32 @@ const adminTo =
   process.env.NEXT_PUBLIC_FROM_EMAIL ||
   'orders@example.com';
 
-// Build the admin email body (you already had this `html`)
-const subject = `New Order: ${inserted.customer_name}`;
-const html = `
-  <h2>New order</h2>
-  <p><strong>Name:</strong> ${inserted.customer_name}</p>
-  <p><strong>Email:</strong> ${inserted.email || ''} | <strong>Phone:</strong> ${inserted.phone || ''}</p>
-  <p><strong>Ship:</strong> ${inserted.ship ? 'Yes' : 'No'}</p>
-  <p><strong>Address:</strong> ${[inserted.address_line1, inserted.address_line2, inserted.city, inserted.state, inserted.postal_code, inserted.country].filter(Boolean).join(', ')}</p>
-  <p><strong>Items:</strong></p>
-  <ul>${(inserted.items || []).map((i:any) => `<li>${i.name} x ${i.qty}</li>`).join('')}</ul>
-  <p><strong>Notes:</strong> ${inserted.notes || ''}</p>
-  <p><small>Order ID: ${inserted.id} | ${inserted.created_at}</small></p>
-`;
+// 1) Admin email
+console.log('[order] admin email', { to: adminTo, orderId: inserted.id })
+await sendOrderEmail({ to: adminTo, subject, html, replyTo: inserted.email || undefined })
 
-// 1) Email to YOU (admin). Optional: reply goes to customer if they provided an email.
-await sendOrderEmail({
-  to: adminTo,
-  subject,
-  html,
-  replyTo: inserted.email || undefined,
-});
-
-// 2) Confirmation to CUSTOMER (only if they provided an email)
+// 2) Customer email (only if they provided one)
 if (inserted.email) {
+  const siteName = process.env.NEXT_PUBLIC_SITE_NAME || 'Sourdough Orders'
+  const adminTo  = process.env.ADMIN_NOTIFY_EMAIL || process.env.NEXT_PUBLIC_FROM_EMAIL || 'orders@example.com'
+
   const customerHtml = `
     <p>Thanks, ${inserted.customer_name}! We received your order.</p>
     ${html}
-  `;
-  console.log('➡️ sending customer email to', inserted.email);
+  `
 
-  try {
-    await sendOrderEmail({
-      to: inserted.email,
-      subject: `Thanks for your order – ${siteName}`,
-      html: customerHtml,
-      replyTo: adminTo, // replies go to you
-    });
-    console.log('✅ customer email sent');
-  } catch (e) {
-    console.error('❌ customer email failed', e);
-  }
+  console.log('[order] customer email', { to: inserted.email, replyTo: adminTo })
+  await sendOrderEmail({
+    to: inserted.email,
+    subject: `Thanks for your order – ${siteName}`,
+    html: customerHtml,
+    replyTo: adminTo,
+  })
+} else {
+  console.log('[order] no customer email provided')
 }
+
+
 
 
 
