@@ -10,6 +10,7 @@ const supabase = createClient(
 
 type OrderItem = {
   id?: string | number;
+  sku?: string;
   name: string;
   qty: number;
   price?: number;
@@ -51,10 +52,26 @@ const inferNameFromEmail = (email: string) => {
   return local ? toTitle(local) : "Customer";
 };
 
-// --------- RECEIPT HTML (customer copy) ---------
-function renderCustomerHtml(order: IncomingOrder & { id?: string }) {
-  const itemsHtml =
-    order.items?.map(
+const shortId = (uuid?: string) =>
+  (uuid || "")
+    .replace(/-/g, "")
+    .slice(0, 8)
+    .toUpperCase() || undefined;
+
+const renderAddressBlock = (o: IncomingOrder) => {
+  const lines: string[] = [];
+  if (o.address1) lines.push(o.address1);
+  if (o.address2) lines.push(o.address2);
+  const cityLine = [o.city, o.state, o.postalCode].filter(Boolean).join(", ");
+  if (cityLine) lines.push(cityLine);
+  if (o.country) lines.push(String(o.country));
+  if (!lines.length) return "<em>No address provided</em>";
+  return lines.map((l) => `<div>${l}</div>`).join("");
+};
+
+function renderItemsTable(items: OrderItem[]) {
+  const rows =
+    items?.map(
       (it) => `
         <tr>
           <td style="padding:6px 8px;border-bottom:1px solid #eee">${it.name}${it.variant ? ` (${it.variant})` : ""}</td>
@@ -66,9 +83,6 @@ function renderCustomerHtml(order: IncomingOrder & { id?: string }) {
     ).join("") || `<tr><td colspan="3" style="padding:8px 0">No items listed</td></tr>`;
 
   return `
-  <div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.45;color:#222">
-    <h1 style="margin:0 0 8px">Thanks for your order, ${order.customerName}!</h1>
-    ${order.id ? `<p style="margin:0 0 12px">Order #${order.id}</p>` : ""}
     <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:12px 0 4px;width:100%">
       <thead>
         <tr>
@@ -77,35 +91,75 @@ function renderCustomerHtml(order: IncomingOrder & { id?: string }) {
           <th align="right" style="text-align:right;padding:6px 8px;border-bottom:2px solid #000">Price</th>
         </tr>
       </thead>
-      <tbody>${itemsHtml}</tbody>
-    </table>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+// --------- CUSTOMER HTML ---------
+function renderCustomerHtml(order: IncomingOrder & { id?: string }) {
+  const idShort = shortId(order.id);
+  return `
+  <div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.45;color:#222">
+    <h1 style="margin:0 0 8px">Thanks for your order, ${toTitle(order.customerName)}!</h1>
+    ${idShort ? `<p style="margin:0 0 12px">Order #${idShort}</p>` : ""}
+
+    <h3 style="margin:16px 0 6px">Your Items</h3>
+    ${renderItemsTable(order.items)}
+
+    <h3 style="margin:16px 0 6px">Delivery</h3>
+    <div style="padding:8px 10px;background:#fafafa;border:1px solid #eee;border-radius:8px;">
+      ${renderAddressBlock(order)}
+    </div>
+
+    <h3 style="margin:16px 0 6px">Contact</h3>
+    <div style="padding:8px 10px;background:#fafafa;border:1px solid #eee;border-radius:8px;">
+      <div><strong>Email:</strong> ${order.customerEmail}</div>
+      ${order.phone ? `<div><strong>Phone:</strong> ${order.phone}</div>` : ""}
+    </div>
+
+    ${
+      order.notes
+        ? `<h3 style="margin:16px 0 6px">Notes</h3>
+           <div style="padding:8px 10px;background:#fafafa;border:1px solid #eee;border-radius:8px;">${order.notes}</div>`
+        : ""
+    }
+
     <p style="margin:16px 0 0">If anything looks off, just reply to this email and we’ll fix it.</p>
-    <p style="margin:6px 0 0">— FieldLux / Kanarra Homestead</p>
+    <p style="margin:6px 0 0">— Kanarra Heights Homestead</p>
   </div>`;
 }
 
-// --------- ADMIN HTML (your copy) ---------
+// --------- ADMIN HTML ---------
 function renderAdminHtml(order: IncomingOrder & { id?: string }) {
+  const idShort = shortId(order.id);
   return `
   <div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.45;color:#222">
     <h1 style="margin:0 0 8px">NEW ORDER received</h1>
-    ${order.id ? `<p style="margin:0 0 12px">Order #${order.id}</p>` : ""}
+    ${idShort ? `<p style="margin:0 0 12px"><strong>Order #</strong> ${idShort}</p>` : ""}
 
-    <h2>Customer</h2>
-    <p><strong>${order.customerName}</strong> (${order.customerEmail})</p>
-    ${order.phone ? `<p>Phone: ${order.phone}</p>` : ""}
+    <h3 style="margin:16px 0 6px">Customer</h3>
+    <div style="padding:8px 10px;background:#fafafa;border:1px solid #eee;border-radius:8px;">
+      <div><strong>Name:</strong> ${toTitle(order.customerName)}</div>
+      <div><strong>Email:</strong> ${order.customerEmail}</div>
+      ${order.phone ? `<div><strong>Phone:</strong> ${order.phone}</div>` : ""}
+    </div>
 
-    <h2>Delivery</h2>
-    <p>
-      ${order.address1 ?? ""} ${order.address2 ?? ""}<br/>
-      ${order.city ?? ""}, ${order.state ?? ""} ${order.postalCode ?? ""}<br/>
-      ${order.country ?? "USA"}
-    </p>
+    <h3 style="margin:16px 0 6px">Delivery</h3>
+    <div style="padding:8px 10px;background:#fafafa;border:1px solid #eee;border-radius:8px;">
+      ${renderAddressBlock(order)}
+    </div>
 
-    <h2>Items</h2>
-    <pre>${JSON.stringify(order.items, null, 2)}</pre>
+    <h3 style="margin:16px 0 6px">Items</h3>
+    ${renderItemsTable(order.items)}
 
-    ${order.notes ? `<h2>Notes</h2><p>${order.notes}</p>` : ""}
+    ${
+      order.notes
+        ? `<h3 style="margin:16px 0 6px">Notes</h3>
+           <div style="padding:8px 10px;background:#fff3cd;border:1px solid #ffe69c;border-radius:8px;">${order.notes}</div>`
+        : ""
+    }
+
+    <p style="margin:16px 0 0">— Kanarra Heights Homestead</p>
   </div>`;
 }
 
@@ -131,16 +185,20 @@ export async function POST(req: Request) {
         ? `${raw.first_name} ${raw.last_name}`
         : undefined;
 
-    let name =
-      firstNonEmpty(
-        raw.customerName,
-        raw.name,
-        raw.fullName,
-        raw.full_name,
-        combinedName1,
-        combinedName2,
-        raw?.contact?.name
-      ) || (email ? inferNameFromEmail(email) : "Customer");
+    let nameCandidate = firstNonEmpty(
+      raw.customerName,
+      raw.name,
+      raw.fullName,
+      raw.full_name,
+      combinedName1,
+      combinedName2,
+      raw?.contact?.name
+    );
+
+    // Prefer real name when present; only infer from email if truly missing
+    const name = nameCandidate && nameCandidate.trim()
+      ? toTitle(nameCandidate)
+      : (email ? inferNameFromEmail(email) : "Customer");
 
     if (!email) {
       return NextResponse.json({ error: "Missing 'customerEmail'." }, { status: 400 });
@@ -190,32 +248,36 @@ export async function POST(req: Request) {
     }
 
     const origin = new URL(req.url).origin;
+    const idShort = shortId(data?.id);
     const customerHtml = renderCustomerHtml({ ...order, id: data?.id });
     const adminHtml = renderAdminHtml({ ...order, id: data?.id });
-
     const admin = process.env.ADMIN_NOTIFY_EMAIL || process.env.FROM_EMAIL;
 
     // send customer copy
-    await fetch(`${origin}/api/send-email`, {
+    const sendCustomer = fetch(`${origin}/api/send-email`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         to: order.customerEmail,
-        subject: `Your order is confirmed${data?.id ? ` — #${data.id}` : ""}`,
+        subject: `Your order is confirmed${idShort ? ` — #${idShort}` : ""}`,
         html: customerHtml,
+        fromName: "Kanarra Heights Homestead", // (update your send-email route to honor this)
       }),
     });
 
     // send admin copy
-    await fetch(`${origin}/api/send-email`, {
+    const sendAdmin = fetch(`${origin}/api/send-email`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         to: admin,
-        subject: `NEW ORDER${data?.id ? ` — #${data.id}` : ""}`,
+        subject: `NEW ORDER${idShort ? ` — #${idShort}` : ""}`,
         html: adminHtml,
+        fromName: "Kanarra Heights Homestead", // (update your send-email route to honor this)
       }),
     });
+
+    await Promise.all([sendCustomer, sendAdmin]);
 
     return NextResponse.json({ success: true, order: data }, { status: 200 });
   } catch (e: any) {
