@@ -137,43 +137,43 @@ export async function POST(req: Request) {
       notes: firstNonEmpty(raw.notes) ?? null,
     };
 
-  // -------- SAVE TO SUPABASE (matches your existing columns) --------
-const { data, error } = await supabase
-  .from("orders")
-  .insert({
-    customer_name: order.customerName,   // NOT NULL
-    email: order.customerEmail,
-    phone: order.phone,
-    ship: order.ship ?? true,
-    address_line1: order.address1,       // 👈 underscore names
-    address_line2: order.address2,       // 👈 underscore names
-    city: order.city,
-    state: order.state,
-    postal_code: order.postalCode,
-    country: order.country ?? "USA",
-    items: order.items ?? [],            // jsonb NOT NULL
-    notes: order.notes,
-    status: "new",
-  })
-  .select()
-  .single();
+    // -------- SAVE TO SUPABASE (matches your existing columns) --------
+    const { data, error } = await supabase
+      .from("orders")
+      .insert({
+        customer_name: order.customerName,   // NOT NULL
+        email: order.customerEmail,
+        phone: order.phone,
+        ship: order.ship ?? true,
+        address_line1: order.address1,       // underscores
+        address_line2: order.address2,
+        city: order.city,
+        state: order.state,
+        postal_code: order.postalCode,
+        country: order.country ?? "USA",
+        items: order.items ?? [],            // jsonb NOT NULL
+        notes: order.notes,
+        status: "new",
+      })
+      .select()
+      .single();
 
-if (error) {
-  console.error("Supabase insert error:", error);
-  // Surface the real error so we can see what's wrong without guessing
-  return NextResponse.json({ error: `Failed to save order: ${error.message}` }, { status: 500 });
-}
+    if (error) {
+      console.error("Supabase insert error:", error);
+      return NextResponse.json({ error: `Failed to save order: ${error.message}` }, { status: 500 });
+    }
 
-
-    // -------- send confirmation email (customer + you) --------
+    // -------- send confirmation email (customer + you via ADMIN_NOTIFY_EMAIL) --------
     const origin = new URL(req.url).origin;
     const html = renderReceiptHtml({ ...order, id: data?.id });
+
+    const admin = process.env.ADMIN_NOTIFY_EMAIL || process.env.FROM_EMAIL;
 
     const emailRes = await fetch(`${origin}/api/send-email`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        to: [order.customerEmail, process.env.FROM_EMAIL as string],
+        to: [order.customerEmail, admin], // 👈 send your copy to a real inbox
         subject: `Your order is confirmed${data?.id ? ` — #${data.id}` : ""}`,
         html,
       }),
