@@ -30,25 +30,26 @@ export async function POST(req: NextRequest) {
     const data = OrderSchema.parse(body)
 
     const sb = getSupabaseAdmin()
-    const { data: inserted, error } = await sb
-      .from('orders')
-      .insert({
-        customer_name: data.customer_name,
-        email: data.email?.trim() || null,
-        phone: data.phone || null,
-        ship: data.ship,
-        address_line1: data.address_line1 || null,
-        address_line2: data.address_line2 || null,
-        city: data.city || null,
-        state: data.state || null,
-        postal_code: data.postal_code || null,
-        country: data.country || 'USA',
-        items: data.items,
-        notes: data.notes || null,
-        status: 'new'
-      })
-      .select()
-      .single()
+const { data: inserted, error } = await sb
+  .from('orders')
+  .insert({
+    customer_name: data.customer_name,
+    email: data.email?.trim() || null,   // <- comma ✅
+    phone: data.phone || null,
+    ship: data.ship,
+    address_line1: data.address_line1 || null,
+    address_line2: data.address_line2 || null,
+    city: data.city || null,
+    state: data.state || null,
+    postal_code: data.postal_code || null,
+    country: data.country || 'USA',
+    items: data.items,
+    notes: data.notes || null,
+    status: 'new',
+  })
+  .select('*')
+  .single()
+
 
     if (error) throw error
 
