@@ -8,13 +8,7 @@ const supabase = createClient(
   { auth: { persistSession: false } }
 );
 
-type OrderItem = {
-  id?: string | number;
-  name: string;
-  qty: number;
-  price?: number;
-  variant?: string;
-};
+type OrderItem = { id?: string | number; name: string; qty: number; price?: number; variant?: string; };
 
 type IncomingOrder = {
   customerEmail: string;
@@ -36,23 +30,31 @@ const firstNonEmpty = (...vals: unknown[]) =>
 
 const shortOrderId = (uuid: string) => uuid.replace(/-/g, "").slice(0, 8).toUpperCase();
 
-// -------- Name + Address helpers (accept many shapes/keys) --------
+/** ---------- Name + Address resolvers (broadened) ---------- */
 function resolveName(raw: any, emailForFallback?: string): string {
-  const joinedFirstLast =
-    [raw.firstName, raw.lastName].every(v => typeof v === "string" && v.trim())
-      ? `${raw.firstName} ${raw.lastName}`.trim()
-      : null;
+  const joinedTop = [raw.firstName, raw.lastName].every(v => typeof v === "string" && v?.trim())
+    ? `${raw.firstName} ${raw.lastName}`.trim()
+    : null;
+
+  const joinedContact = [raw?.contact?.firstName, raw?.contact?.lastName].every(
+    v => typeof v === "string" && v?.trim()
+  )
+    ? `${raw.contact.firstName} ${raw.contact.lastName}`.trim()
+    : null;
 
   const name =
     firstNonEmpty(
       raw.customerName,
+      raw.customer_name,
       raw.name,
       raw.fullName,
       raw.full_name,
-      raw.contact?.name,
-      raw.shipping_name,
-      raw.billing_name,
-      joinedFirstLast
+      raw.contactName,
+      raw?.contact?.name,
+      raw?.contact?.fullName,
+      raw?.contact?.full_name,
+      joinedTop,
+      joinedContact
     ) ||
     (emailForFallback ? emailForFallback.split("@")[0] : "") ||
     "Customer";
@@ -61,9 +63,10 @@ function resolveName(raw: any, emailForFallback?: string): string {
 }
 
 function pickAddress1(raw: any): string | null {
-  // flat variants
+  // flat + snake/camel
   const flat = firstNonEmpty(
     raw.address1,
+    raw.address_line1,
     raw.addressLine1,
     raw.street,
     raw.street1,
@@ -73,27 +76,28 @@ function pickAddress1(raw: any): string | null {
   );
   if (flat) return flat;
 
-  // nested common shapes
-  const nestedCandidates = [
+  // delivery-scoped and common nested variants
+  const nests = [
+    raw.delivery,
+    raw.deliveryAddress,
     raw.address,
     raw.shippingAddress,
     raw.billingAddress,
-    raw.deliveryAddress,
     raw.contact?.address,
     raw.contact?.shippingAddress,
   ];
-
-  for (const obj of nestedCandidates) {
+  for (const obj of nests) {
     if (!obj) continue;
-    const fromObj = firstNonEmpty(
+    const v = firstNonEmpty(
       obj.address1,
+      obj.address_line1,
       obj.addressLine1,
       obj.line1,
       obj.street,
       obj.street1,
       obj.streetAddress
     );
-    if (fromObj) return fromObj;
+    if (v) return v;
   }
   return null;
 }
@@ -102,6 +106,7 @@ function pickAddress2(raw: any): string | null {
   return (
     firstNonEmpty(
       raw.address2,
+      raw.address_line2,
       raw.addressLine2,
       raw.apt,
       raw.unit,
@@ -110,6 +115,10 @@ function pickAddress2(raw: any): string | null {
       raw.billing_address2
     ) ||
     firstNonEmpty(
+      raw.delivery?.address2,
+      raw.delivery?.address_line2,
+      raw.delivery?.addressLine2,
+      raw.delivery?.line2,
       raw.address?.address2,
       raw.address?.line2,
       raw.shippingAddress?.address2,
@@ -123,14 +132,10 @@ function pickAddress2(raw: any): string | null {
 
 function pickCity(raw: any): string | null {
   return (
+    firstNonEmpty(raw.city, raw.shipping_city, raw.billing_city) ||
     firstNonEmpty(
-      raw.city,
-      raw.town,
-      raw.locality,
-      raw.shipping_city,
-      raw.billing_city
-    ) ||
-    firstNonEmpty(
+      raw.delivery?.city,
+      raw.delivery?.locality,
       raw.address?.city,
       raw.address?.locality,
       raw.shippingAddress?.city,
@@ -144,14 +149,10 @@ function pickCity(raw: any): string | null {
 
 function pickState(raw: any): string | null {
   return (
+    firstNonEmpty(raw.state, raw.region, raw.province, raw.shipping_state, raw.billing_state) ||
     firstNonEmpty(
-      raw.state,
-      raw.region,
-      raw.province,
-      raw.shipping_state,
-      raw.billing_state
-    ) ||
-    firstNonEmpty(
+      raw.delivery?.state,
+      raw.delivery?.region,
       raw.address?.state,
       raw.address?.region,
       raw.shippingAddress?.state,
@@ -165,15 +166,12 @@ function pickState(raw: any): string | null {
 
 function pickPostal(raw: any): string | null {
   return (
+    firstNonEmpty(raw.postalCode, raw.postal_code, raw.postcode, raw.zip, raw.zipcode) ||
     firstNonEmpty(
-      raw.postalCode,
-      raw.postcode,
-      raw.zip,
-      raw.zipcode,
-      raw.shipping_postalCode,
-      raw.billing_postalCode
-    ) ||
-    firstNonEmpty(
+      raw.delivery?.postalCode,
+      raw.delivery?.postal_code,
+      raw.delivery?.postcode,
+      raw.delivery?.zip,
       raw.address?.postalCode,
       raw.address?.postcode,
       raw.address?.zip,
@@ -188,13 +186,10 @@ function pickPostal(raw: any): string | null {
 
 function pickCountry(raw: any): string | null {
   return (
+    firstNonEmpty(raw.country, raw.countryCode, raw.country_code) ||
     firstNonEmpty(
-      raw.country,
-      raw.countryCode,
-      raw.shipping_country,
-      raw.billing_country
-    ) ||
-    firstNonEmpty(
+      raw.delivery?.country,
+      raw.delivery?.countryCode,
       raw.address?.country,
       raw.address?.countryCode,
       raw.shippingAddress?.country,
@@ -206,30 +201,49 @@ function pickCountry(raw: any): string | null {
   );
 }
 
-// -------------------- HTML renderers --------------------
-function renderCustomerHtml(order: IncomingOrder & { id?: string }) {
-  const itemsHtml =
-    order.items?.map(it => {
-      const price =
-        typeof it.price === "number" ? `$${it.price.toFixed(2)}` : "-";
-      return `<tr><td>${it.name}${it.variant ? ` (${it.variant})` : ""}</td><td align="center">${it.qty}</td><td align="right">${price}</td></tr>`;
-    }).join("") || `<tr><td colspan="3">No items listed</td></tr>`;
+/** ---------- HTML renderers (with table header: Item | Qty | Price) ---------- */
+function itemsTable(items: OrderItem[]) {
+  const rows =
+    items?.map(it => {
+      const price = typeof it.price === "number" ? `$${it.price.toFixed(2)}` : "-";
+      return `<tr>
+        <td style="padding:6px 8px;border-top:1px solid #eee">${it.name}${it.variant ? ` (${it.variant})` : ""}</td>
+        <td align="center" style="padding:6px 8px;border-top:1px solid #eee">${it.qty}</td>
+        <td align="right" style="padding:6px 8px;border-top:1px solid #eee">${price}</td>
+      </tr>`;
+    }).join("") || `<tr><td colspan="3" style="padding:6px 8px;border-top:1px solid #eee">No items listed</td></tr>`;
 
-  const addrLines = [
-    [order.address1, order.address2].filter(Boolean).join(" "),
-    [order.city, order.state].filter(Boolean).join(", "),
-    order.postalCode,
-    order.country
+  return `<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
+    <thead>
+      <tr>
+        <th align="left" style="padding:6px 8px;border-bottom:2px solid #000">Item</th>
+        <th align="center" style="padding:6px 8px;border-bottom:2px solid #000">Qty</th>
+        <th align="right" style="padding:6px 8px;border-bottom:2px solid #000">Price</th>
+      </tr>
+    </thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+function addressBlock(o: IncomingOrder) {
+  const parts = [
+    [o.address1, o.address2].filter(Boolean).join(" "),
+    [o.city, o.state].filter(Boolean).join(", "),
+    o.postalCode,
+    o.country,
   ].filter(Boolean);
+  return parts.join("<br/>");
+}
 
+function renderCustomerHtml(order: IncomingOrder & { id?: string }) {
   return `
   <div style="font-family:Arial,sans-serif">
     <h1>Thanks for your order, ${order.customerName}!</h1>
     <p>Order #${shortOrderId(order.id || "")}</p>
     <h3>Your Items</h3>
-    <table>${itemsHtml}</table>
+    ${itemsTable(order.items)}
     <h3>Delivery</h3>
-    <p>${addrLines.join("<br/>")}</p>
+    <p>${addressBlock(order)}</p>
     <h3>Contact</h3>
     <p>Email: ${order.customerEmail}<br/>Phone: ${order.phone || ""}</p>
     <h3>Notes</h3>
@@ -240,20 +254,6 @@ function renderCustomerHtml(order: IncomingOrder & { id?: string }) {
 }
 
 function renderAdminHtml(order: IncomingOrder & { id?: string }) {
-  const itemsHtml =
-    order.items?.map(it => {
-      const price =
-        typeof it.price === "number" ? `$${it.price.toFixed(2)}` : "-";
-      return `<tr><td>${it.name}${it.variant ? ` (${it.variant})` : ""}</td><td align="center">${it.qty}</td><td align="right">${price}</td></tr>`;
-    }).join("") || `<tr><td colspan="3">No items listed</td></tr>`;
-
-  const addrLines = [
-    [order.address1, order.address2].filter(Boolean).join(" "),
-    [order.city, order.state].filter(Boolean).join(", "),
-    order.postalCode,
-    order.country
-  ].filter(Boolean);
-
   return `
   <div style="font-family:Arial,sans-serif">
     <h1>NEW ORDER received</h1>
@@ -263,25 +263,25 @@ function renderAdminHtml(order: IncomingOrder & { id?: string }) {
        <strong>Email:</strong> ${order.customerEmail}<br/>
        <strong>Phone:</strong> ${order.phone || ""}</p>
     <h3>Delivery</h3>
-    <p>${addrLines.join("<br/>")}</p>
+    <p>${addressBlock(order)}</p>
     <h3>Items</h3>
-    <table>${itemsHtml}</table>
+    ${itemsTable(order.items)}
     <h3>Notes</h3>
     <p>${order.notes || ""}</p>
     <p>— Kanarra Heights Homestead</p>
   </div>`;
 }
 
-// -------------------- Route --------------------
+/** -------------------- Route -------------------- */
 export async function POST(req: Request) {
   try {
     const raw: any = await req.json();
 
-    // Uncomment for one test order to see exactly what the front-end sends:
-    // console.log("ORDER RAW PAYLOAD", JSON.stringify(raw, null, 2));
+    // Uncomment once for debugging if needed:
+    // console.log("ORDER RAW PAYLOAD", JSON.stringify(raw));
 
     const email =
-      firstNonEmpty(raw.customerEmail, raw.email, raw.contact?.email) || "";
+      firstNonEmpty(raw.customerEmail, raw.email, raw?.contact?.email) || "";
     if (!email) {
       return NextResponse.json({ error: "Missing 'customerEmail'." }, { status: 400 });
     }
@@ -293,7 +293,7 @@ export async function POST(req: Request) {
     const order: IncomingOrder = {
       customerEmail: email,
       customerName: name,
-      phone: firstNonEmpty(raw.phone, raw.contact?.phone) ?? null,
+      phone: firstNonEmpty(raw.phone, raw?.contact?.phone) ?? null,
       ship: typeof raw.ship === "boolean" ? raw.ship : true,
       address1: pickAddress1(raw),
       address2: pickAddress2(raw),
@@ -331,7 +331,6 @@ export async function POST(req: Request) {
 
     const origin = new URL(req.url).origin;
 
-    // Customer email
     await fetch(`${origin}/api/send-email`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -342,7 +341,6 @@ export async function POST(req: Request) {
       }),
     });
 
-    // Admin email
     await fetch(`${origin}/api/send-email`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -358,4 +356,5 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: e?.message ?? "Unknown error" }, { status: 500 });
   }
 }
+
 
