@@ -1,414 +1,166 @@
 'use client';
-
-import { useEffect, useMemo, useRef, useState } from 'react';
-
-type ApiResponse = { ok: boolean; kh?: string; venmo_note?: string; error?: string };
-
-// Example catalog (you can expand to 20+ later)
-const CATALOG = [
-  'Classic Sourdough',
-  'Jalapeño Cheddar',
-  'Cinnamon Raisin',
-  'Banana Pepper & Pepper Jack',
-  'Rosemary',
-  'Garlic',
-  'Seeded Country',
-  'Olive',
-];
-
-const PRICE_EACH = 10; // simple flat price preview; final total is server-side
+import { useState } from 'react';
 
 export default function OrderPage() {
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [kh, setKh] = useState<string | null>(null);
 
-  // Fulfillment + date
-  const [method, setMethod] = useState<'pickup' | 'shipping'>('pickup'); // default Pickup
-  const [dateHint, setDateHint] = useState<string>('');
-  const dateRef = useRef<HTMLInputElement | null>(null);
-
-  // Dynamic items
-  type Line = { name: string; qty: number };
-  const [items, setItems] = useState<Line[]>([{ name: 'Sourdough Loaf', qty: 1 }]);
-  const [picker, setPicker] = useState<string>('Classic Sourdough');
-
-  // Live total (preview only)
-  const total = useMemo(() => items.reduce((s, i) => s + (i.qty || 0) * PRICE_EACH, 0), [items]);
-
-  useEffect(() => {
-    if (message) {
-      const t = setTimeout(() => setMessage(null), 4000);
-      return () => clearTimeout(t);
-    }
-  }, [message]);
-
-  // ===== Date helpers (always choose the NEXT valid day) =====
-  function toYMD(d: Date) {
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${y}-${m}-${day}`;
-  }
-
-  function fromYMD(ymd: string) {
-    const [y, m, d] = ymd.split('-').map(Number);
-    return new Date(y, m - 1, d);
-  }
-
-  // Returns the NEXT occurrence of targetDow strictly in the future relative to 'from'
-  // targetDow: 0=Sun ... 5=Fri 6=Sat
-  function nextDowFrom(from: Date, targetDow: number) {
-    const d = new Date(from);
-    d.setHours(0, 0, 0, 0);
-    // If 'from' itself is targetDow, move to the next week (strictly future)
-    do {
-      d.setDate(d.getDate() + 1);
-    } while (d.getDay() !== targetDow);
-    return d;
-  }
-
-  function allowedDowFor(m: 'pickup' | 'shipping') {
-    return m === 'pickup' ? 6 /* Sat */ : 5 /* Fri */;
-  }
-
-  function ruleText(m: 'pickup' | 'shipping') {
-    return m === 'pickup'
-      ? 'Pickup is Saturdays at Festival City Farmers Market (Cedar City).'
-      : 'Shipping goes out on Fridays (US only).';
-  }
-
-  // On method change, auto-pick the NEXT allowed date from today
-  useEffect(() => {
-    const el = dateRef.current;
-    const allowed = allowedDowFor(method);
-    setDateHint(ruleText(method));
-    if (el) {
-      const snap = nextDowFrom(new Date(), allowed);
-      el.value = toYMD(snap);
-      el.setCustomValidity('');
-    }
-  }, [method]);
-
-  // If user picks a non-valid day, snap to the NEXT allowed day (never previous)
-  function validateOrSnapDate(el: HTMLInputElement) {
-    if (!el.value) return;
-    try {
-      const picked = fromYMD(el.value);
-      const allowed = allowedDowFor(method);
-      if (picked.getDay() !== allowed) {
-        const snapped = nextDowFrom(picked, allowed);
-        el.value = toYMD(snapped);
-        setDateHint(
-          method === 'pickup'
-            ? 'Pickup is Saturdays — date adjusted to the next Saturday.'
-            : 'Shipping is Fridays — date adjusted to the next Friday.'
-        );
-      } else {
-        setDateHint(ruleText(method));
-      }
-      el.setCustomValidity('');
-    } catch {
-      el.setCustomValidity('');
-    }
-  }
-
-  // ===== Items UI helpers =====
-  function addItem() {
-    if (!picker) return;
-    if (items.some((i) => i.name === picker)) {
-      // bump qty if already present
-      setItems((prev) =>
-        prev.map((i) => (i.name === picker ? { ...i, qty: i.qty + 1 } : i))
-      );
-    } else {
-      setItems((prev) => [...prev, { name: picker, qty: 1 }]);
-    }
-  }
-
-  function setQty(idx: number, qty: number) {
-    setItems((prev) => prev.map((i, n) => (n === idx ? { ...i, qty: Math.max(0, qty) } : i)));
-  }
-
-  function removeItem(idx: number) {
-    setItems((prev) => prev.filter((_, n) => n !== idx));
-  }
-
-  // ===== Submit =====
-  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setSubmitting(true);
     setMessage(null);
     setKh(null);
 
+    const formData = new FormData(e.currentTarget);
+    const payload = {
+      name: formData.get('name'),
+      email: formData.get('email'),
+      phone: formData.get('phone'),
+      fulfillment: formData.get('fulfillment'),
+      date: formData.get('date'),
+      address1: formData.get('address1'),
+      address2: formData.get('address2'),
+      city: formData.get('city'),
+      state: formData.get('state'),
+      postal: formData.get('postal'),
+      items: [] as any[],
+      notes: formData.get('notes'),
+    };
+
     try {
-      const fd = new FormData(e.currentTarget);
-
-      // For pickup, clear address fields
-      const addressDisabled = method !== 'shipping';
-      if (addressDisabled) {
-        fd.set('address1', '');
-        fd.set('address2', '');
-        fd.set('city', '');
-        fd.set('state', '');
-        fd.set('postal', '');
-      }
-
-      // Ensure date obeys rule
-      if (dateRef.current) validateOrSnapDate(dateRef.current);
-
-      // Build payload from form + dynamic items
-      const payload: Record<string, any> = Object.fromEntries(fd.entries());
-
-      // Map items → item1_name/item1_qty, item2_name/item2_qty, ...
-      const filtered = items.filter((i) => (i.qty || 0) > 0);
-      filtered.forEach((line, idx) => {
-        const n = idx + 1;
-        payload[`item${n}_name`] = line.name;
-        payload[`item${n}_qty`] = String(line.qty);
-      });
-
-      // (Optional) clear any unused slots you used earlier; not necessary.
-
       const res = await fetch('/api/order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-
-      const data: ApiResponse = await res.json();
-      if (!res.ok || !data.ok) throw new Error(data.error || 'Order failed');
-
-      setKh(data.kh ?? null);
-      setMessage(
-        `✅ Order placed! ${data.kh ? `Your ID is ${data.kh}` : 'Check your email for confirmation.'}`
-      );
-      // keep lines but reset small quantities
-      setItems([{ name: 'Sourdough Loaf', qty: 1 }]);
-    } catch (err: any) {
-      setMessage(err?.message || 'Something went wrong. Please try again.');
+      const data = await res.json();
+      if (data.ok) {
+        setKh(data.kh_id || null);
+        setMessage('Order placed successfully!');
+      } else {
+        setMessage('Something went wrong.');
+      }
+    } catch (err) {
+      setMessage('Network error.');
     } finally {
       setSubmitting(false);
     }
   }
 
-  const addressDisabled = method !== 'shipping';
-
   return (
-    <div style={{ maxWidth: 720, margin: '0 auto', padding: 16, fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif' }}>
-      <div style={{ background: '#fff', borderRadius: 12, padding: 20, boxShadow: '0 6px 20px rgba(0,0,0,0.06)' }}>
-        <h1 style={{ margin: '0 0 8px', fontSize: 22 }}>Kanarra Heights Homestead — Order</h1>
-        <p style={{ margin: '0 0 16px', color: '#666' }}>
-          Choose <b>Pickup</b> or <b>Shipping</b>, then complete your details.
+    <div className="container">
+      <div className="card khh-card" style={{ padding: 24, position: 'relative' }}>
+        {/* watermark */}
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            pointerEvents: 'none',
+            opacity: 0.05,
+          }}
+        >
+          <img
+            src="/khh-logo.svg"
+            alt=""
+            style={{
+              width: '50%',
+              height: '50%',
+              objectFit: 'contain',
+            }}
+          />
+        </div>
+
+        <h2 style={{ marginBottom: 12, position: 'relative', zIndex: 1 }}>
+          Kanarra Heights Homestead — Order
+        </h2>
+        <p style={{ marginTop: 0, marginBottom: 20, color: '#555', position: 'relative', zIndex: 1 }}>
+          Choose <strong>Pickup</strong> or <strong>Shipping</strong>, then complete your details.
         </p>
 
-        <form onSubmit={onSubmit}>
-          <div style={{ display: 'grid', gap: 12 }}>
-            {/* Contact */}
+        <form onSubmit={handleSubmit} style={{ position: 'relative', zIndex: 1 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div>
-              <label style={{ fontWeight: 600, fontSize: 14 }}>Full Name</label>
-              <input name="name" placeholder="Jane Doe" required style={inputStyle} />
+              <label>Full Name</label>
+              <input name="name" required />
             </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <div>
-                <label style={{ fontWeight: 600, fontSize: 14 }}>Email</label>
-                <input name="email" type="email" placeholder="jane@example.com" required style={inputStyle} />
-              </div>
-              <div>
-                <label style={{ fontWeight: 600, fontSize: 14 }}>Phone</label>
-                <input name="phone" placeholder="(555) 555-5555" required style={inputStyle} />
-              </div>
-            </div>
-
-            {/* Fulfillment (better alignment) */}
             <div>
-              <div style={{ fontWeight: 700, marginBottom: 6 }}>Fulfillment</div>
-              <div style={{ display: 'flex', alignItems: 'baseline' }}>
-                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginRight: 24 }}>
-                  <input
-                    type="radio"
-                    name="fulfillment_method"
-                    value="pickup"
-                    checked={method === 'pickup'}
-                    onChange={() => setMethod('pickup')}
-                  />
-                  <span>Pickup</span>
-                </label>
-                <span style={{ color: '#666', fontSize: 12, marginRight: 32 }}>
+              <label>Email</label>
+              <input type="email" name="email" required />
+            </div>
+            <div>
+              <label>Phone</label>
+              <input type="tel" name="phone" required />
+            </div>
+          </div>
+
+          <div style={{ marginTop: 20 }}>
+            <label>Fulfillment</label>
+            <div style={{ display: 'flex', gap: 24, marginTop: 6 }}>
+              <label style={{ display: 'flex', flexDirection: 'column' }}>
+                <input type="radio" name="fulfillment" value="pickup" defaultChecked /> Pickup
+                <span style={{ fontSize: 12, color: '#666' }}>
                   Festival City Farmers Market, Cedar City
                 </span>
-
-                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginRight: 24 }}>
-                  <input
-                    type="radio"
-                    name="fulfillment_method"
-                    value="shipping"
-                    checked={method === 'shipping'}
-                    onChange={() => setMethod('shipping')}
-                  />
-                  <span>Shipping</span>
-                </label>
-                <span style={{ color: '#666', fontSize: 12 }}>US only</span>
-              </div>
+              </label>
+              <label style={{ display: 'flex', flexDirection: 'column' }}>
+                <input type="radio" name="fulfillment" value="shipping" /> Shipping
+                <span style={{ fontSize: 12, color: '#666' }}>US only</span>
+              </label>
             </div>
-
-            {/* Date */}
-            <div>
-              <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>Date</label>
-              <input
-                ref={dateRef}
-                name="pickup_date"
-                type="date"
-                onBlur={(e) => validateOrSnapDate(e.currentTarget)}
-                style={inputStyle}
-              />
-              <div style={{ marginTop: 6, color: '#666', fontSize: 12 }}>
-                {dateHint || ruleText(method)}
-              </div>
-            </div>
-
-            {/* Address (Shipping only) */}
-            <div style={{ marginTop: 6, fontWeight: 700, fontSize: 15 }}>Shipping Address (only if “Shipping”)</div>
-
-            <div>
-              <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>Address line 1</label>
-              <input name="address1" disabled={addressDisabled} required={!addressDisabled} style={disabledStyle(addressDisabled)} />
-            </div>
-            <div>
-              <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>Address line 2</label>
-              <input name="address2" disabled={addressDisabled} style={disabledStyle(addressDisabled)} />
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <div>
-                <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>City</label>
-                <input name="city" disabled={addressDisabled} required={!addressDisabled} style={disabledStyle(addressDisabled)} />
-              </div>
-              <div>
-                <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>State</label>
-                <input name="state" disabled={addressDisabled} required={!addressDisabled} style={disabledStyle(addressDisabled)} />
-              </div>
-            </div>
-            <div>
-              <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>Postal Code</label>
-              <input name="postal" disabled={addressDisabled} required={!addressDisabled} style={disabledStyle(addressDisabled)} />
-            </div>
-
-            {/* Items: dropdown → list */}
-            <div style={{ marginTop: 6, fontWeight: 700, fontSize: 15 }}>Items</div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px 120px', gap: 12, alignItems: 'end' }}>
-              <div>
-                <label style={{ fontWeight: 600, fontSize: 14, display: 'block', marginBottom: 6 }}>Choose a bread</label>
-                <select value={picker} onChange={(e) => setPicker(e.target.value)} style={inputStyle}>
-                  {CATALOG.map((name) => (
-                    <option key={name} value={name}>{name}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <button
-                  type="button"
-                  onClick={addItem}
-                  style={{ ...buttonStyle, width: '100%' }}
-                >
-                  Add item
-                </button>
-              </div>
-              <div />
-            </div>
-
-            {/* Items table */}
-            {items.length > 0 && (
-              <div style={{ border: '1px solid #eee', borderRadius: 10 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px 80px', padding: '8px 10px', borderBottom: '1px solid #eee', fontWeight: 600 }}>
-                  <div>Item</div>
-                  <div style={{ textAlign: 'right' }}>Qty</div>
-                  <div />
-                </div>
-                {items.map((line, idx) => (
-                  <div key={`${line.name}-${idx}`} style={{ display: 'grid', gridTemplateColumns: '1fr 120px 80px', padding: '8px 10px', alignItems: 'center', borderBottom: idx < items.length - 1 ? '1px solid #f3f3f3' : 'none' }}>
-                    <div>{line.name}</div>
-                    <div style={{ textAlign: 'right' }}>
-                      <input
-                        type="number"
-                        min={0}
-                        value={line.qty}
-                        onChange={(e) => setQty(idx, Math.max(0, Number(e.target.value || 0)))}
-                        style={{ ...inputStyle, width: 100, textAlign: 'right' }}
-                      />
-                    </div>
-                    <div>
-                      <button
-                        type="button"
-                        onClick={() => removeItem(idx)}
-                        aria-label="Remove"
-                        style={{ ...buttonStyle, background: '#eee', color: '#333' }}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Totals preview */}
-            <div style={{ marginTop: 6, color: '#333' }}>
-              <b>Estimated total:</b> ${total}
-              <div style={{ fontSize: 12, color: '#666' }}>(final total computed server-side)</div>
-            </div>
-
-            {/* Submit */}
-           <button
-  type="submit"
-  disabled={submitting}
-  className="primary"
->
-  {submitting ? 'Placing order…' : 'Place Order'}
-</button>
-
-
-            {message && (
-              <div style={{ marginTop: 10, padding: 10, background: '#f6f6f6', borderRadius: 10 }}>
-                {kh ? (
-                  <div>
-                    <div style={{ fontWeight: 700 }}>{message}</div>
-                    <div>Venmo note: “{kh} — Kanarra Heights Homestead”</div>
-                  </div>
-                ) : (
-                  message
-                )}
-              </div>
-            )}
           </div>
+
+          <div style={{ marginTop: 20 }}>
+            <label>Date</label>
+            <input type="date" name="date" required />
+            <div style={{ fontSize: 12, marginTop: 4, color: '#666' }}>
+              Pickup is Saturdays at Festival City Farmers Market (Cedar City). Shipping runs Fridays
+              (US only).
+            </div>
+          </div>
+
+          <div style={{ marginTop: 20 }}>
+            <label>Shipping Address (only if “Shipping”)</label>
+            <input name="address1" placeholder="Address line 1" />
+            <input name="address2" placeholder="Address line 2" />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <input name="city" placeholder="City" />
+              <input name="state" placeholder="State" />
+            </div>
+            <input name="postal" placeholder="Postal Code" />
+          </div>
+
+          <div style={{ marginTop: 20 }}>
+            <label>Items</label>
+            <select name="bread">
+              <option value="sourdough">Classic Sourdough</option>
+              <option value="jalapeno">Jalapeño Cheddar</option>
+              <option value="cinnamon">Cinnamon Raisin</option>
+              <option value="banana">Banana Pepper & Pepper Jack</option>
+            </select>
+            <input name="qty" type="number" defaultValue={1} min={1} />
+          </div>
+
+          <div style={{ marginTop: 20 }}>
+            <label>Notes</label>
+            <textarea name="notes" rows={3} placeholder="Any special requests?" />
+          </div>
+
+          <button type="submit" disabled={submitting} className="primary" style={{ marginTop: 24 }}>
+            {submitting ? 'Placing order…' : 'Place Order'}
+          </button>
+
+          {message && (
+            <div style={{ marginTop: 12 }}>
+              {message} {kh && <strong>{kh}</strong>}
+            </div>
+          )}
         </form>
-      </div>
-      <div style={{ marginTop: 14, fontSize: 12, color: '#777', textAlign: 'center' }}>
-        Pickup is Saturdays at Festival City Farmers Market (Cedar City). Shipping runs Fridays (US only).
       </div>
     </div>
   );
 }
 
-const inputStyle: React.CSSProperties = {
-  width: '100%',
-  padding: 12,
-  fontSize: 16,
-  borderRadius: 10,
-  border: '1px solid #ddd',
-};
-
-const buttonStyle: React.CSSProperties = {
-  appearance: 'none',
-  border: 'none',
-  background: '#111',
-  color: '#fff',
-  padding: '12px 16px',
-  borderRadius: 12,
-  fontSize: 16,
-  cursor: 'pointer',
-};
-function disabledStyle(disabled: boolean): React.CSSProperties {
-  return { ...inputStyle, background: disabled ? '#f6f6f6' : '#fff' };
-}
