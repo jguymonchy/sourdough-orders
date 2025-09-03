@@ -1,12 +1,21 @@
 /* app/globals.css */
+
+/* ----- Brand tokens ----- */
 :root {
-  --khh-olive: #2f4f41;   /* primary */
-  --khh-olive-2: #3b5f4f; /* hover */
-  --khh-cream: #f6f2ea;   /* soft bg */
-  --khh-ink: #111111;     /* headings */
-  --khh-ink-2: #666666;   /* muted */
-  --khh-border: #e6e6e6;  /* hairlines */
-  --khh-card: #ffffff;    /* cards */
+  --khh-olive: #2f4f41;       /* primary */
+  --khh-olive-2: #3b5f4f;     /* hover */
+  --khh-cream: #efe8db;       /* soft page bg (warmer) */
+  --khh-ink: #111111;         /* headings */
+  --khh-ink-2: #666666;       /* muted */
+  --khh-border: #e6e6e6;      /* hairlines */
+  --khh-card: #ffffff;        /* cards */
+}
+
+/* ----- Global box sizing (fixes “inputs hanging off right side”) ----- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
 }
 
 html, body {
@@ -17,8 +26,42 @@ html, body {
   font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
 }
 
-a { color: var(--khh-olive); }
-a:hover { color: var(--khh-olive-2); }
+/* ----- Simple container so content never hugs edges on mobile ----- */
+.container {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+/* ----- Header styles ----- */
+.khh-header {
+  background: #f3ede2;
+  border-bottom: 1px solid var(--khh-border);
+}
+.khh-header__inner {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.khh-header__logo {
+  display: block;
+  width: 56px;
+  height: 56px;
+}
+.khh-header__text { line-height: 1.2; }
+.khh-header__title { font-weight: 700; font-size: 18px; color: var(--khh-ink); }
+.khh-header__subtitle { font-size: 12px; color: var(--khh-ink-2); }
+
+/* ----- Card + brand button ----- */
+.card {
+  background: var(--khh-card);
+  border: 1px solid var(--khh-border);
+  border-radius: 12px;
+  box-shadow: 0 6px 20px rgba(0,0,0,.06);
+}
 
 button.primary {
   appearance: none;
@@ -31,10 +74,36 @@ button.primary {
   cursor: pointer;
 }
 button.primary:hover { background: var(--khh-olive-2); }
+button.primary:disabled { opacity: .65; cursor: default; }
 
-.card {
-  background: var(--khh-card);
-  border: 1px solid var(--khh-border);
-  border-radius: 12px;
-  box-shadow: 0 6px 20px rgba(0,0,0,.06);
+/* ----- Watermark inside the order card ----- */
+.khh-card {
+  position: relative;
+  overflow: hidden; /* clip watermark blur/edges */
+}
+.khh-card::after {
+  /* light barn logo watermark */
+  content: "";
+  position: absolute;
+  right: -8%;
+  bottom: -6%;
+  width: 55%;
+  height: 55%;
+  background-image: url('/khh-logo.svg');
+  background-repeat: no-repeat;
+  background-size: contain;
+  background-position: center;
+  opacity: 0.06;              /* very light */
+  filter: grayscale(100%) contrast(80%) brightness(1.1);
+  pointer-events: none;
+}
+
+/* ----- Form elements sanity (avoid visual overflow) ----- */
+input, select, textarea {
+  width: 100%;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  padding: 12px;
+  font-size: 16px;
+  background: #fff;
 }
