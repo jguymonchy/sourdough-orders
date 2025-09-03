@@ -4,19 +4,37 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 type ApiResponse = { ok: boolean; kh?: string; venmo_note?: string; error?: string };
 
+// Example catalog (you can expand to 20+ later)
+const CATALOG = [
+  'Classic Sourdough',
+  'Jalapeño Cheddar',
+  'Cinnamon Raisin',
+  'Banana Pepper & Pepper Jack',
+  'Rosemary',
+  'Garlic',
+  'Seeded Country',
+  'Olive',
+];
+
+const PRICE_EACH = 10; // simple flat price preview; final total is server-side
+
 export default function OrderPage() {
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [kh, setKh] = useState<string | null>(null);
-  const [method, setMethod] = useState<'pickup' | 'shipping'>('pickup'); // default = Pickup
+
+  // Fulfillment + date
+  const [method, setMethod] = useState<'pickup' | 'shipping'>('pickup'); // default Pickup
   const [dateHint, setDateHint] = useState<string>('');
   const dateRef = useRef<HTMLInputElement | null>(null);
 
-  // item preview (same as before)
-  const [qty1, setQty1] = useState<number>(1);
-  const [qty2, setQty2] = useState<number>(0);
-  const PRICE_EACH = 10;
-  const total = useMemo(() => (qty1 + qty2) * PRICE_EACH, [qty1, qty2]);
+  // Dynamic items
+  type Line = { name: string; qty: number };
+  const [items, setItems] = useState<Line[]>([{ name: 'Sourdough Loaf', qty: 1 }]);
+  const [picker, setPicker] = useState<string>('Classic Sourdough');
+
+  // Live total (preview only)
+  const total = useMemo(() => items.reduce((s, i) => s + (i.qty || 0) * PRICE_EACH, 0), [items]);
 
   useEffect(() => {
     if (message) {
@@ -25,74 +43,98 @@ export default function OrderPage() {
     }
   }, [message]);
 
-  // === Date helpers (local timezone) ===
+  // ===== Date helpers (always choose the NEXT valid day) =====
   function toYMD(d: Date) {
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, '0');
     const day = String(d.getDate()).padStart(2, '0');
     return `${y}-${m}-${day}`;
   }
+
   function fromYMD(ymd: string) {
     const [y, m, d] = ymd.split('-').map(Number);
     return new Date(y, m - 1, d);
   }
-  function nextDow(targetDow: number) {
-    const d = new Date();
+
+  // Returns the NEXT occurrence of targetDow strictly in the future relative to 'from'
+  // targetDow: 0=Sun ... 5=Fri 6=Sat
+  function nextDowFrom(from: Date, targetDow: number) {
+    const d = new Date(from);
     d.setHours(0, 0, 0, 0);
-    const curDow = d.getDay(); // 0=Sun..6=Sat
-    const add = (targetDow - curDow + 7) % 7 || 7; // always next occurrence (>=1 day)
-    d.setDate(d.getDate() + add);
+    // If 'from' itself is targetDow, move to the next week (strictly future)
+    do {
+      d.setDate(d.getDate() + 1);
+    } while (d.getDay() !== targetDow);
     return d;
   }
-  function allowedDowFor(methodVal: 'pickup' | 'shipping') {
-    return methodVal === 'pickup' ? 6 /* Sat */ : 5 /* Fri */;
+
+  function allowedDowFor(m: 'pickup' | 'shipping') {
+    return m === 'pickup' ? 6 /* Sat */ : 5 /* Fri */;
   }
-  function ruleText(methodVal: 'pickup' | 'shipping') {
-    return methodVal === 'pickup'
-      ? 'Pickup available Saturdays at Festival City Farmers Market (Cedar City).'
+
+  function ruleText(m: 'pickup' | 'shipping') {
+    return m === 'pickup'
+      ? 'Pickup is Saturdays at Festival City Farmers Market (Cedar City).'
       : 'Shipping goes out on Fridays (US only).';
   }
 
-  // Set/validate date when method changes or user edits
+  // On method change, auto-pick the NEXT allowed date from today
   useEffect(() => {
+    const el = dateRef.current;
     const allowed = allowedDowFor(method);
     setDateHint(ruleText(method));
-    // snap to next allowed day whenever method changes (for clarity)
-    const el = dateRef.current;
     if (el) {
-      const d = nextDow(allowed);
-      el.value = toYMD(d);
+      const snap = nextDowFrom(new Date(), allowed);
+      el.value = toYMD(snap);
       el.setCustomValidity('');
     }
   }, [method]);
 
+  // If user picks a non-valid day, snap to the NEXT allowed day (never previous)
   function validateOrSnapDate(el: HTMLInputElement) {
     if (!el.value) return;
     try {
       const picked = fromYMD(el.value);
-      const dow = picked.getDay();
       const allowed = allowedDowFor(method);
-      if (dow !== allowed) {
-        // snap to next allowed and show a gentle hint
-        const snapped = nextDow(allowed);
+      if (picked.getDay() !== allowed) {
+        const snapped = nextDowFrom(picked, allowed);
         el.value = toYMD(snapped);
         setDateHint(
           method === 'pickup'
             ? 'Pickup is Saturdays — date adjusted to the next Saturday.'
             : 'Shipping is Fridays — date adjusted to the next Friday.'
         );
-        el.setCustomValidity('');
       } else {
-        el.setCustomValidity('');
         setDateHint(ruleText(method));
       }
+      el.setCustomValidity('');
     } catch {
-      // if any parse issue, just clear validity
       el.setCustomValidity('');
     }
   }
 
-  // === Submit ===
+  // ===== Items UI helpers =====
+  function addItem() {
+    if (!picker) return;
+    if (items.some((i) => i.name === picker)) {
+      // bump qty if already present
+      setItems((prev) =>
+        prev.map((i) => (i.name === picker ? { ...i, qty: i.qty + 1 } : i))
+      );
+    } else {
+      setItems((prev) => [...prev, { name: picker, qty: 1 }]);
+    }
+  }
+
+  function setQty(idx: number, qty: number) {
+    setItems((prev) => prev.map((i, n) => (n === idx ? { ...i, qty: Math.max(0, qty) } : i)));
+  }
+
+  function removeItem(idx: number) {
+    setItems((prev) => prev.filter((_, n) => n !== idx));
+  }
+
+  // ===== Submit =====
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setSubmitting(true);
@@ -102,7 +144,7 @@ export default function OrderPage() {
     try {
       const fd = new FormData(e.currentTarget);
 
-      // Keep payload clean on Pickup
+      // For pickup, clear address fields
       const addressDisabled = method !== 'shipping';
       if (addressDisabled) {
         fd.set('address1', '');
@@ -112,10 +154,21 @@ export default function OrderPage() {
         fd.set('postal', '');
       }
 
-      // Ensure date obeys rule before sending
+      // Ensure date obeys rule
       if (dateRef.current) validateOrSnapDate(dateRef.current);
 
-      const payload = Object.fromEntries(fd.entries());
+      // Build payload from form + dynamic items
+      const payload: Record<string, any> = Object.fromEntries(fd.entries());
+
+      // Map items → item1_name/item1_qty, item2_name/item2_qty, ...
+      const filtered = items.filter((i) => (i.qty || 0) > 0);
+      filtered.forEach((line, idx) => {
+        const n = idx + 1;
+        payload[`item${n}_name`] = line.name;
+        payload[`item${n}_qty`] = String(line.qty);
+      });
+
+      // (Optional) clear any unused slots you used earlier; not necessary.
 
       const res = await fetch('/api/order', {
         method: 'POST',
@@ -130,8 +183,8 @@ export default function OrderPage() {
       setMessage(
         `✅ Order placed! ${data.kh ? `Your ID is ${data.kh}` : 'Check your email for confirmation.'}`
       );
-      setQty1(1);
-      setQty2(0);
+      // keep lines but reset small quantities
+      setItems([{ name: 'Sourdough Loaf', qty: 1 }]);
     } catch (err: any) {
       setMessage(err?.message || 'Something went wrong. Please try again.');
     } finally {
@@ -154,59 +207,53 @@ export default function OrderPage() {
             {/* Contact */}
             <div>
               <label style={{ fontWeight: 600, fontSize: 14 }}>Full Name</label>
-              <input name="name" placeholder="Jane Doe" required style={inputStyle}/>
+              <input name="name" placeholder="Jane Doe" required style={inputStyle} />
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div>
                 <label style={{ fontWeight: 600, fontSize: 14 }}>Email</label>
-                <input name="email" type="email" placeholder="jane@example.com" required style={inputStyle}/>
+                <input name="email" type="email" placeholder="jane@example.com" required style={inputStyle} />
               </div>
               <div>
                 <label style={{ fontWeight: 600, fontSize: 14 }}>Phone</label>
-                <input name="phone" placeholder="(555) 555-5555" required style={inputStyle}/>
+                <input name="phone" placeholder="(555) 555-5555" required style={inputStyle} />
               </div>
             </div>
 
-            {/* Fulfillment */}
+            {/* Fulfillment (better alignment) */}
             <div>
-              <div style={{ fontWeight: 700, marginBottom: 8 }}>Fulfillment</div>
-              <div style={{ display: 'flex', gap: 24 }}>
-                <label style={{ display: 'inline-flex', flexDirection: 'column' }}>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-                    <input
-                      type="radio"
-                      name="fulfillment_method"
-                      value="pickup"
-                      checked={method === 'pickup'}
-                      onChange={() => setMethod('pickup')}
-                    />
-                    Pickup
-                  </span>
-                  <span style={{ color: '#666', fontSize: 12 }}>
-                    Festival City Farmers Market, Cedar City
-                  </span>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>Fulfillment</div>
+              <div style={{ display: 'flex', alignItems: 'baseline' }}>
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginRight: 24 }}>
+                  <input
+                    type="radio"
+                    name="fulfillment_method"
+                    value="pickup"
+                    checked={method === 'pickup'}
+                    onChange={() => setMethod('pickup')}
+                  />
+                  <span>Pickup</span>
                 </label>
+                <span style={{ color: '#666', fontSize: 12, marginRight: 32 }}>
+                  Festival City Farmers Market, Cedar City
+                </span>
 
-                <label style={{ display: 'inline-flex', flexDirection: 'column' }}>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-                    <input
-                      type="radio"
-                      name="fulfillment_method"
-                      value="shipping"
-                      checked={method === 'shipping'}
-                      onChange={() => setMethod('shipping')}
-                    />
-                    Shipping
-                  </span>
-                  <span style={{ color: '#666', fontSize: 12 }}>
-                    US only
-                  </span>
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginRight: 24 }}>
+                  <input
+                    type="radio"
+                    name="fulfillment_method"
+                    value="shipping"
+                    checked={method === 'shipping'}
+                    onChange={() => setMethod('shipping')}
+                  />
+                  <span>Shipping</span>
                 </label>
+                <span style={{ color: '#666', fontSize: 12 }}>US only</span>
               </div>
             </div>
 
-            {/* Pickup/Shipping date */}
+            {/* Date */}
             <div>
               <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>Date</label>
               <input
@@ -226,73 +273,97 @@ export default function OrderPage() {
 
             <div>
               <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>Address line 1</label>
-              <input name="address1" disabled={addressDisabled} required={!addressDisabled} style={disabledStyle(addressDisabled)}/>
+              <input name="address1" disabled={addressDisabled} required={!addressDisabled} style={disabledStyle(addressDisabled)} />
             </div>
             <div>
               <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>Address line 2</label>
-              <input name="address2" disabled={addressDisabled} style={disabledStyle(addressDisabled)}/>
+              <input name="address2" disabled={addressDisabled} style={disabledStyle(addressDisabled)} />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div>
                 <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>City</label>
-                <input name="city" disabled={addressDisabled} required={!addressDisabled} style={disabledStyle(addressDisabled)}/>
+                <input name="city" disabled={addressDisabled} required={!addressDisabled} style={disabledStyle(addressDisabled)} />
               </div>
               <div>
                 <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>State</label>
-                <input name="state" disabled={addressDisabled} required={!addressDisabled} style={disabledStyle(addressDisabled)}/>
+                <input name="state" disabled={addressDisabled} required={!addressDisabled} style={disabledStyle(addressDisabled)} />
               </div>
             </div>
             <div>
               <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>Postal Code</label>
-              <input name="postal" disabled={addressDisabled} required={!addressDisabled} style={disabledStyle(addressDisabled)}/>
+              <input name="postal" disabled={addressDisabled} required={!addressDisabled} style={disabledStyle(addressDisabled)} />
             </div>
 
-            {/* Items */}
+            {/* Items: dropdown → list */}
             <div style={{ marginTop: 6, fontWeight: 700, fontSize: 15 }}>Items</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px', gap: 12 }}>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px 120px', gap: 12, alignItems: 'end' }}>
               <div>
-                <label style={{ fontWeight: 600, fontSize: 14 }}>Item #1</label>
-                <input name="item1_name" defaultValue="Sourdough Loaf" style={inputStyle}/>
+                <label style={{ fontWeight: 600, fontSize: 14, display: 'block', marginBottom: 6 }}>Choose a bread</label>
+                <select value={picker} onChange={(e) => setPicker(e.target.value)} style={inputStyle}>
+                  {CATALOG.map((name) => (
+                    <option key={name} value={name}>{name}</option>
+                  ))}
+                </select>
               </div>
               <div>
-                <label style={{ fontWeight: 600, fontSize: 14 }}>Qty</label>
-                <input
-                  name="item1_qty"
-                  type="number"
-                  min={0}
-                  value={qty1}
-                  onChange={(e) => setQty1(Math.max(0, Number(e.target.value || 0)))}
-                  style={inputStyle}
-                />
+                <button
+                  type="button"
+                  onClick={addItem}
+                  style={{ ...buttonStyle, width: '100%' }}
+                >
+                  Add item
+                </button>
               </div>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px', gap: 12 }}>
-              <div>
-                <label style={{ fontWeight: 600, fontSize: 14 }}>Item #2</label>
-                <input name="item2_name" placeholder="Cinnamon Loaf" style={inputStyle}/>
-              </div>
-              <div>
-                <label style={{ fontWeight: 600, fontSize: 14 }}>Qty</label>
-                <input
-                  name="item2_qty"
-                  type="number"
-                  min={0}
-                  value={qty2}
-                  onChange={(e) => setQty2(Math.max(0, Number(e.target.value || 0)))}
-                  style={inputStyle}
-                />
-              </div>
+              <div />
             </div>
 
+            {/* Items table */}
+            {items.length > 0 && (
+              <div style={{ border: '1px solid #eee', borderRadius: 10 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px 80px', padding: '8px 10px', borderBottom: '1px solid #eee', fontWeight: 600 }}>
+                  <div>Item</div>
+                  <div style={{ textAlign: 'right' }}>Qty</div>
+                  <div />
+                </div>
+                {items.map((line, idx) => (
+                  <div key={`${line.name}-${idx}`} style={{ display: 'grid', gridTemplateColumns: '1fr 120px 80px', padding: '8px 10px', alignItems: 'center', borderBottom: idx < items.length - 1 ? '1px solid #f3f3f3' : 'none' }}>
+                    <div>{line.name}</div>
+                    <div style={{ textAlign: 'right' }}>
+                      <input
+                        type="number"
+                        min={0}
+                        value={line.qty}
+                        onChange={(e) => setQty(idx, Math.max(0, Number(e.target.value || 0)))}
+                        style={{ ...inputStyle, width: 100, textAlign: 'right' }}
+                      />
+                    </div>
+                    <div>
+                      <button
+                        type="button"
+                        onClick={() => removeItem(idx)}
+                        aria-label="Remove"
+                        style={{ ...buttonStyle, background: '#eee', color: '#333' }}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Totals preview */}
             <div style={{ marginTop: 6, color: '#333' }}>
               <b>Estimated total:</b> ${total}
               <div style={{ fontSize: 12, color: '#666' }}>(final total computed server-side)</div>
             </div>
 
+            {/* Submit */}
             <button
               type="submit"
               disabled={submitting}
-              style={{ appearance: 'none', border: 'none', background: '#111', color: '#fff', padding: '12px 16px', borderRadius: 12, fontSize: 16, cursor: 'pointer' }}
+              style={{ ...buttonStyle, background: '#111', color: '#fff' }}
             >
               {submitting ? 'Placing order…' : 'Place Order'}
             </button>
@@ -327,6 +398,16 @@ const inputStyle: React.CSSProperties = {
   border: '1px solid #ddd',
 };
 
+const buttonStyle: React.CSSProperties = {
+  appearance: 'none',
+  border: 'none',
+  background: '#111',
+  color: '#fff',
+  padding: '12px 16px',
+  borderRadius: 12,
+  fontSize: 16,
+  cursor: 'pointer',
+};
 function disabledStyle(disabled: boolean): React.CSSProperties {
   return { ...inputStyle, background: disabled ? '#f6f6f6' : '#fff' };
 }
