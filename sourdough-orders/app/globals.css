@@ -1,21 +1,40 @@
-:root { --max: 900px; }
-* { box-sizing: border-box; }
-body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, 'Apple Color Emoji', 'Segoe UI Emoji'; margin:0; padding:0; }
-.container { max-width: var(--max); margin: 0 auto; padding: 1rem; }
-.card { border: 1px solid #ddd; border-radius: 12px; padding: 1rem; margin: 1rem 0; }
-label { display:block; font-weight:600; margin-top: .75rem; }
-input, select, textarea { width:100%; padding:.6rem; border:1px solid #ccc; border-radius:8px; }
-button { padding:.7rem 1rem; border:0; border-radius:10px; cursor:pointer; }
-button.primary { background:#111; color:white; }
-table { width:100%; border-collapse: collapse; }
-th, td { border-bottom: 1px solid #eee; text-align:left; padding:.5rem; }
-.badge { display:inline-block; padding:.2rem .5rem; border-radius:6px; background:#eee; font-size:.8rem; }
-.flex { display:flex; gap:.5rem; align-items:center; }
-.row { display:grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
-@media (max-width: 720px) { .row { grid-template-columns: 1fr; } }
-small.muted { color:#666; }
-hr { border:0; border-top:1px solid #eee; margin:1rem 0; }
-header { border-bottom:1px solid #eee; }
-header .container { display:flex; justify-content:space-between; align-items:center; }
-a { color: inherit; text-decoration: none; }
-nav a { margin-left:1rem; }
+/* app/globals.css */
+:root {
+  --khh-olive: #2f4f41;   /* primary */
+  --khh-olive-2: #3b5f4f; /* hover */
+  --khh-cream: #f6f2ea;   /* soft bg */
+  --khh-ink: #111111;     /* headings */
+  --khh-ink-2: #666666;   /* muted */
+  --khh-border: #e6e6e6;  /* hairlines */
+  --khh-card: #ffffff;    /* cards */
+}
+
+html, body {
+  padding: 0;
+  margin: 0;
+  background: var(--khh-cream);
+  color: var(--khh-ink);
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+}
+
+a { color: var(--khh-olive); }
+a:hover { color: var(--khh-olive-2); }
+
+button.primary {
+  appearance: none;
+  border: none;
+  background: var(--khh-olive);
+  color: #fff;
+  padding: 12px 16px;
+  border-radius: 12px;
+  font-size: 16px;
+  cursor: pointer;
+}
+button.primary:hover { background: var(--khh-olive-2); }
+
+.card {
+  background: var(--khh-card);
+  border: 1px solid var(--khh-border);
+  border-radius: 12px;
+  box-shadow: 0 6px 20px rgba(0,0,0,.06);
+}
