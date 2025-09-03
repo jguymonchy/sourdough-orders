@@ -360,13 +360,14 @@ export default function OrderPage() {
             </div>
 
             {/* Submit */}
-            <button
-              type="submit"
-              disabled={submitting}
-              style={{ ...buttonStyle, background: '#111', color: '#fff' }}
-            >
-              {submitting ? 'Placing order…' : 'Place Order'}
-            </button>
+           <button
+  type="submit"
+  disabled={submitting}
+  className="primary"
+>
+  {submitting ? 'Placing order…' : 'Place Order'}
+</button>
+
 
             {message && (
               <div style={{ marginTop: 10, padding: 10, background: '#f6f6f6', borderRadius: 10 }}>
