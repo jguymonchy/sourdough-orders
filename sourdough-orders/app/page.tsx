@@ -112,99 +112,95 @@ export default function OrderPage() {
               </div>
             </div>
 
-            {/* Fulfillment */}
-            <div>
-              <label style={{ fontWeight: 600, fontSize: 14 }}>Fulfillment</label>
-              <select
-                name="fulfillment_method"
-                value={method}
-                onChange={(e) => setMethod(e.target.value === 'shipping' ? 'shipping' : 'pickup')}
-                required
-                style={inputStyle}
-              >
-                <option value="pickup">Pickup</option>
-                <option value="shipping">Shipping</option>
-              </select>
-            </div>
+           {/* Fulfillment */}
+<div style={{ marginTop: 16 }}>
+  <div style={{ fontWeight: 700, marginBottom: 8 }}>Fulfillment</div>
+  <div style={{ display: 'flex', gap: 16 }}>
+    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+      <input
+        type="radio"
+        name="fulfillment_method"
+        value="pickup"
+        checked={method === 'pickup'}
+        onChange={() => setMethod('pickup')}
+      />
+      Pickup
+    </label>
+    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+      <input
+        type="radio"
+        name="fulfillment_method"
+        value="shipping"
+        checked={method === 'shipping'}
+        onChange={() => setMethod('shipping')}
+      />
+      Shipping
+    </label>
+  </div>
+</div>
 
-            {/* Pickup date */}
-            <div>
-              <label style={{ fontWeight: 600, fontSize: 14 }}>Pickup date</label>
-              <input name="pickup_date" type="date" style={inputStyle}/>
-            </div>
+{/* Pickup date (shown for both, used when pickup) */}
+<div style={{ marginTop: 12 }}>
+  <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>Pickup date</label>
+  <input
+    type="date"
+    name="pickup_date"
+    style={{ width: '100%', padding: 12, border: '1px solid #ddd', borderRadius: 10, fontSize: 16 }}
+  />
+</div>
 
-            {/* Shipping Address (only if shipping) */}
-            <div style={{ marginTop: 6, fontWeight: 700, fontSize: 15 }}>Shipping Address (only if “Shipping”)</div>
+{/* Shipping Address (disabled when Pickup) */}
+<div style={{ marginTop: 16 }}>
+  <div style={{ fontWeight: 700, marginBottom: 8 }}>Shipping address (only if “Shipping”)</div>
 
-            <div>
-              <label style={{ fontWeight: 600, fontSize: 14 }}>Address line 1</label>
-              <input name="address1" placeholder="123 Main St" disabled={addressDisabled} required={!addressDisabled}
-                     style={disabledStyle(addressDisabled)}/>
-            </div>
+  <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>Address line 1</label>
+  <input
+    name="address1"
+    disabled={addressDisabled}
+    required={!addressDisabled}
+    style={{ width: '100%', padding: 12, border: '1px solid #ddd', borderRadius: 10, background: addressDisabled ? '#f6f6f6' : '#fff' }}
+  />
 
-            <div>
-              <label style={{ fontWeight: 600, fontSize: 14 }}>Address line 2</label>
-              <input name="address2" placeholder="Apt, Suite, etc." disabled={addressDisabled}
-                     style={disabledStyle(addressDisabled)}/>
-            </div>
+  <div style={{ height: 10 }} />
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <div>
-                <label style={{ fontWeight: 600, fontSize: 14 }}>City</label>
-                <input name="city" placeholder="Kanarraville" disabled={addressDisabled} required={!addressDisabled}
-                       style={disabledStyle(addressDisabled)}/>
-              </div>
-              <div>
-                <label style={{ fontWeight: 600, fontSize: 14 }}>State</label>
-                <input name="state" placeholder="UT" disabled={addressDisabled} required={!addressDisabled}
-                       style={disabledStyle(addressDisabled)}/>
-              </div>
-            </div>
+  <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>Address line 2</label>
+  <input
+    name="address2"
+    disabled={addressDisabled}
+    style={{ width: '100%', padding: 12, border: '1px solid #ddd', borderRadius: 10, background: addressDisabled ? '#f6f6f6' : '#fff' }}
+  />
 
-            <div>
-              <label style={{ fontWeight: 600, fontSize: 14 }}>Postal Code</label>
-              <input name="postal" placeholder="84742" disabled={addressDisabled} required={!addressDisabled}
-                     style={disabledStyle(addressDisabled)}/>
-            </div>
+  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
+    <div>
+      <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>City</label>
+      <input
+        name="city"
+        disabled={addressDisabled}
+        required={!addressDisabled}
+        style={{ width: '100%', padding: 12, border: '1px solid #ddd', borderRadius: 10, background: addressDisabled ? '#f6f6f6' : '#fff' }}
+      />
+    </div>
+    <div>
+      <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>State</label>
+      <input
+        name="state"
+        disabled={addressDisabled}
+        required={!addressDisabled}
+        style={{ width: '100%', padding: 12, border: '1px solid #ddd', borderRadius: 10, background: addressDisabled ? '#f6f6f6' : '#fff' }}
+      />
+    </div>
+  </div>
 
-            {/* Items */}
-            <div style={{ marginTop: 6, fontWeight: 700, fontSize: 15 }}>Items</div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px', gap: 12 }}>
-              <div>
-                <label style={{ fontWeight: 600, fontSize: 14 }}>Item #1</label>
-                <input name="item1_name" defaultValue="Sourdough Loaf" style={inputStyle}/>
-              </div>
-              <div>
-                <label style={{ fontWeight: 600, fontSize: 14 }}>Qty</label>
-                <input
-                  name="item1_qty"
-                  type="number"
-                  min={0}
-                  value={qty1}
-                  onChange={(e) => setQty1(Math.max(0, Number(e.target.value || 0)))}
-                  style={inputStyle}
-                />
-              </div>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px', gap: 12 }}>
-              <div>
-                <label style={{ fontWeight: 600, fontSize: 14 }}>Item #2</label>
-                <input name="item2_name" placeholder="Cinnamon Loaf" style={inputStyle}/>
-              </div>
-              <div>
-                <label style={{ fontWeight: 600, fontSize: 14 }}>Qty</label>
-                <input
-                  name="item2_qty"
-                  type="number"
-                  min={0}
-                  value={qty2}
-                  onChange={(e) => setQty2(Math.max(0, Number(e.target.value || 0)))}
-                  style={inputStyle}
-                />
-              </div>
-            </div>
+  <div style={{ marginTop: 12 }}>
+    <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>Postal Code</label>
+    <input
+      name="postal"
+      disabled={addressDisabled}
+      required={!addressDisabled}
+      style={{ width: '100%', padding: 12, border: '1px solid #ddd', borderRadius: 10, background: addressDisabled ? '#f6f6f6' : '#fff' }}
+    />
+  </div>
+</div>
 
             {/* Totals preview */}
             <div style={{ marginTop: 6, color: '#333' }}>
