@@ -10,32 +10,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body>
-        <header style={{
-          background: 'var(--khh-cream)',
-          borderBottom: '1px solid var(--khh-border)',
-        }}>
-          <div style={{
-            maxWidth: 980,
-            margin: '0 auto',
-            padding: '14px 16px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12
-          }}>
+        <header className="khh-header">
+          <div className="khh-header__inner">
             <img
               src="/khh-logo.svg"
               alt="Kanarra Heights Homestead"
-              width={36}
-              height={36}
-              style={{ display: 'block' }}
+              width={56}
+              height={56}
+              className="khh-header__logo"
             />
-            <div style={{ lineHeight: 1.2 }}>
-              <div style={{ fontWeight: 700, fontSize: 18, color: 'var(--khh-ink)' }}>
-                Kanarra Heights Homestead
-              </div>
-              <div style={{ fontSize: 12, color: 'var(--khh-ink-2)' }}>
-                Artisan sourdough • Cedar City, UT
-              </div>
+            <div className="khh-header__text">
+              <div className="khh-header__title">Kanarra Heights Homestead</div>
+              <div className="khh-header__subtitle">Artisan sourdough • Cedar City, UT</div>
             </div>
           </div>
         </header>
