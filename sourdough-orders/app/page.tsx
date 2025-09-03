@@ -1,6 +1,12 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useState } from 'react';
+
+export default function OrderPage() {
+  const [method, setMethod] = useState<'pickup' | 'shipping'>('pickup'); // default = pickup
+  const addressDisabled = method !== 'shipping';
+
 
 type ApiResponse = {
   ok: boolean;
