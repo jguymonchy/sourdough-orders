@@ -33,6 +33,9 @@ html, body {
   padding: 16px;
 }
 
+/* Hide global header when page adds the class (page.tsx does this) */
+.khh-hide-header .khh-header { display: none; }
+
 /* ----- Header styles (site-wide) ----- */
 .khh-header {
   background: #f3ede2;
