@@ -3,139 +3,115 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
-  process.env.SUPABASE_URL as string,
-  process.env.SUPABASE_SERVICE_ROLE_KEY as string,
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
   { auth: { persistSession: false } }
 );
 
-const shortId = (uuid: string) =>
-  uuid?.replace?.(/-/g, "")?.slice(0, 8)?.toUpperCase?.() || "";
+const shortId = (u: string) =>
+  u?.replace?.(/-/g, "")?.slice(0, 8)?.toUpperCase?.() || "";
 
-const first = (...vals: any[]) =>
-  vals.find((v) => typeof v === "string" && v.trim())?.toString().trim();
+const first = (...v: any[]) =>
+  v.find((x) => typeof x === "string" && x.trim())?.toString().trim();
 
-/** Read body safely (avoids “Unexpected end of JSON input”) */
 async function readJson(req: Request) {
-  const text = await req.text();
-  if (!text) return { ok: false as const, error: "Empty body" };
+  const t = await req.text();
+  if (!t) return { ok: false as const, error: "Empty body" };
   try {
-    return { ok: true as const, data: JSON.parse(text) };
+    return { ok: true as const, data: JSON.parse(t) };
   } catch {
     return { ok: false as const, error: "Invalid JSON" };
   }
 }
 
-export async function POST(req: Request) {
-  // 1) Read + parse
-  const bodyRes = await readJson(req);
-  if (!bodyRes.ok) {
-    return NextResponse.json({ ok: false, error: bodyRes.error }, { status: 400 });
-  }
-  const raw = bodyRes.data;
-
-  try {
-    // 2) Normalize fields (accepts old + new names)
-    const email = first(raw.email, raw.customerEmail, raw?.contact?.email) || "";
-    if (!email) {
-      return NextResponse.json({ ok: false, error: "Missing email" }, { status: 400 });
-    }
-
-    const customer_name =
-      first(
-        raw.customer_name,
-        raw.customerName,
-        raw.name,
-        raw.fullName,
-        raw.full_name
-      ) || email.split("@")[0] || "Customer";
-
-    // method → boolean ship column (matches your DB)
-    const method = first(raw.fulfillment, raw.fulfillment_method) || (raw.ship ? "shipping" : "pickup");
-    const ship: boolean = (method === "shipping") || !!raw.ship;
-
-    // items array (fallbacks)
-    const items = Array.isArray(raw.items)
-      ? raw.items
-      : [];
-
-    // address parts
-    const address_line1 =
-      first(raw.address_line1, raw.address1, raw.addressLine1, raw.street) || null;
-    const address_line2 =
-      first(raw.address_line2, raw.address2, raw.addressLine2, raw.apt, raw.unit, raw.suite) || null;
-    const city = first(raw.city) || null;
-    const state = first(raw.state, raw.region, raw.province) || null;
-    const postal_code = first(raw.postal_code, raw.postal, raw.postcode, raw.zip) || null;
-    const country = first(raw.country, raw.countryCode, raw.country_code) || "USA";
-    const notes = first(raw.notes, raw.orderNotes, raw.comment) || null;
-
-    // 3) Insert into your existing schema (uses ship: boolean)
-    const { data, error } = await supabase
-      .from("orders")
-      .insert({
-        customer_name,
-        email,
-        phone: first(raw.phone, raw?.contact?.phone) || null,
-        ship, // boolean column in your DB
-        address_line1,
-        address_line2,
-        city,
-        state,
-        postal_code,
-        country,
-        items, // JSONB/JSON column
-        notes,
-        status: "open",
-      })
-      .select()
-      .single();
-
-    if (error) {
-      // Surface the real reason so we can fix fast
-      return NextResponse.json(
-        { ok: false, error: `Supabase insert failed: ${error.message}` },
-        { status: 500 }
-      );
-    }
-
-   // 4) Send emails (non-blocking; failures won’t break the order)
-const origin = new URL(req.url).origin;
-const kh = shortId(data.id || "");
-
-try {
-  // Customer email
-  await fetch(`${origin}/api/send-email`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      to: [email],   // <-- FIX: always array
-      subject: `Your order is confirmed — #${kh}`,
-      html: `<p>Thanks, ${customer_name}! Your order #${kh} is received.</p>`,
-    }),
-  });
-
-  // Admin email
-  await fetch(`${origin}/api/send-email`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      to: [process.env.ADMIN_NOTIFY_EMAIL || process.env.FROM_EMAIL],  // already array
-      subject: `NEW ORDER — #${kh}`,
-      html: `<p>${customer_name} placed an order. Items: ${
-        (items || []).map((i: any) => `${i.qty}× ${i.item || i.name}`).join(", ")
-      }</p>`,
-    }),
-  });
-} catch (e) {
-  console.warn("[orders] email send skipped/failed", e);
+function currency(n: number | null | undefined) {
+  const val = Number(n || 0);
+  return `$${val.toFixed(2)}`;
 }
 
-
-    // 5) Return JSON so the form can show success
-    return NextResponse.json({ ok: true, kh, order_id: data.id }, { status: 200 });
-  } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message || "Unknown error" }, { status: 500 });
-  }
+function htmlEscape(s: string | null | undefined) {
+  return (s || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
+
+type Line = { sku?: string; name?: string; item?: string; qty?: number; unit_price?: number };
+
+function renderEmailHTML(opts: {
+  kh: string;
+  customer_name: string;
+  email: string;
+  phone?: string | null;
+  ship: boolean;
+  address_line1?: string | null;
+  address_line2?: string | null;
+  city?: string | null;
+  state?: string | null;
+  postal_code?: string | null;
+  country?: string | null;
+  notes?: string | null;
+  items: Line[];
+  isAdmin: boolean;
+}) {
+  const {
+    kh,
+    customer_name,
+    email,
+    phone,
+    ship,
+    address_line1,
+    address_line2,
+    city,
+    state,
+    postal_code,
+    country = "USA",
+    notes,
+    items,
+    isAdmin,
+  } = opts;
+
+  const rows = (items || []).map((i) => {
+    const nm = i.name || i.item || "Item";
+    const qty = Number(i.qty || 0);
+    const price = Number(i.unit_price || 0);
+    const line = qty * price;
+    return {
+      name: nm,
+      qty,
+      price,
+      line,
+    };
+  });
+
+  const total = rows.reduce((s, r) => s + r.line, 0);
+
+  const addrHTML = ship
+    ? `
+      <p style="margin:4px 0 0 0">${htmlEscape(address_line1)}</p>
+      ${address_line2 ? `<p style="margin:4px 0 0 0">${htmlEscape(address_line2)}</p>` : ""}
+      <p style="margin:4px 0 0 0">${htmlEscape(city)}, ${htmlEscape(state)} ${htmlEscape(postal_code)}</p>
+      <p style="margin:4px 0 0 0">${htmlEscape(country)}</p>
+    `
+    : `<p style="margin:4px 0 0 0">Pickup at Festival City Farmers Market (Cedar City)</p>`;
+
+  const headline = isAdmin ? "NEW ORDER received" : "Thanks for your order!";
+  const preface = isAdmin
+    ? `Order # ${kh}`
+    : `Your order is confirmed — #${kh}`;
+
+  const noteBlock = notes
+    ? `
+      <h3 style="margin:24px 0 8px;font-size:16px">Notes</h3>
+      <p style="margin:0">${htmlEscape(notes)}</p>
+    `
+    : "";
+
+  return `<!doctype html>
+<html>
+  <body style="margin:0;padding:0;background:#f6f6f6;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
+    <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
+      <tr><td align="center" style="padding:24px">
+        <table role="presentation" cellpadding="0" cellspacin
 
 
