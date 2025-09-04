@@ -22,6 +22,12 @@ export default function OrderPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [kh, setKh] = useState<string | null>(null);
 
+  // Hide global header + restore centered logo experience
+  useEffect(() => {
+    document.body.classList.add('khh-hide-header');
+    return () => document.body.classList.remove('khh-hide-header');
+  }, []);
+
   // Fulfillment + date behavior
   const [method, setMethod] = useState<'pickup' | 'shipping'>('pickup');
   const [dateHint, setDateHint] = useState<string>('');
@@ -29,8 +35,8 @@ export default function OrderPage() {
 
   // Items
   type Line = { name: string; qty: number };
-  const [items, setItems] = useState<Line[]>([{ name: 'Sourdough Loaf', qty: 1 }]);
-  const [picker, setPicker] = useState<string>(CATALOG[0]);
+  const [items, setItems] = useState<Line[]>([]); // start EMPTY (no default loaf)
+  const [picker, setPicker] = useState<string>(''); // empty until user chooses
 
   const total = useMemo(
     () => items.reduce((sum, i) => sum + (i.qty || 0) * PRICE_EACH, 0),
@@ -58,9 +64,8 @@ export default function OrderPage() {
   function nextDowFrom(from: Date, targetDow: number) {
     const d = new Date(from);
     d.setHours(0, 0, 0, 0);
-    do {
-      d.setDate(d.getDate() + 1);
-    } while (d.getDay() !== targetDow);
+    do d.setDate(d.getDate() + 1);
+    while (d.getDay() !== targetDow);
     return d;
   }
   function allowedDowFor(m: 'pickup' | 'shipping') {
@@ -110,9 +115,7 @@ export default function OrderPage() {
     if (!name) return;
     setItems((prev) => {
       const found = prev.find((p) => p.name === name);
-      if (found) {
-        return prev.map((p) => (p.name === name ? { ...p, qty: p.qty + 1 } : p));
-      }
+      if (found) return prev.map((p) => (p.name === name ? { ...p, qty: p.qty + 1 } : p));
       return [...prev, { name, qty: 1 }];
     });
   }
@@ -165,7 +168,8 @@ export default function OrderPage() {
 
       setKh(data.kh ?? null);
       setMessage(`✅ Order placed! ${data.kh ? `Your ID is ${data.kh}` : 'Check your email for confirmation.'}`);
-      setItems([{ name: 'Sourdough Loaf', qty: 1 }]);
+      setItems([]); // reset to empty after submit
+      setPicker('');
     } catch (err: any) {
       setMessage(err?.message || 'Something went wrong. Please try again.');
     } finally {
@@ -177,6 +181,15 @@ export default function OrderPage() {
 
   return (
     <div className="container">
+      {/* Centered brand logo (same look as before) */}
+      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
+        <img
+          src="/khh-logo.svg"
+          alt="Kanarra Heights Homestead"
+          style={{ width: 300, height: 'auto' }}
+        />
+      </div>
+
       <div className="card khh-card" style={{ padding: 20, position: 'relative' }}>
         {/* BIG centered watermark */}
         <div className="khh-wm" aria-hidden>
@@ -185,7 +198,6 @@ export default function OrderPage() {
 
         {/* Content layer above watermark */}
         <div style={{ position: 'relative', zIndex: 1 }}>
-          {/* ===== Title text changed here ===== */}
           <h1 style={{ margin: '0 0 8px', fontSize: 22 }}>Artisan Sourdough Bread — Order</h1>
           <p style={{ margin: '0 0 16px', color: '#666' }}>
             Choose <b>Pickup</b> or <b>Shipping</b>, then complete your details.
@@ -282,7 +294,6 @@ export default function OrderPage() {
               {/* Items */}
               <div style={{ marginTop: 6, fontWeight: 700, fontSize: 15 }}>Items</div>
 
-              {/* ===== Label text + full-width selector; auto-add on change ===== */}
               <div>
                 <label style={{ fontWeight: 600, fontSize: 14, display: 'block', marginBottom: 6 }}>
                   Choose a Bread Flavor
@@ -292,9 +303,14 @@ export default function OrderPage() {
                   onChange={(e) => {
                     const name = e.target.value;
                     setPicker(name);
-                    addItemByName(name); // auto-add or increment
+                    addItemByName(name);
+                    // reset so user can add the same item again if desired
+                    setTimeout(() => setPicker(''), 0);
                   }}
                 >
+                  <option value="" disabled hidden>
+                    — Select a Bread Flavor —
+                  </option>
                   {CATALOG.map((name) => (
                     <option key={name} value={name}>
                       {name}
@@ -394,5 +410,6 @@ export default function OrderPage() {
     </div>
   );
 }
+
 
 
