@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 const LOGO_SRC = '/khh-logo.svg';       // full logo for the top center
-const BARN_SRC = '/barn_only.png';       // barn-only SVG for watermark
+const BARN_SRC = '/khh-barn.svg';       // barn-only SVG for watermark
 
 type ApiResponse = { ok: boolean; kh?: string; venmo_note?: string; error?: string };
 
