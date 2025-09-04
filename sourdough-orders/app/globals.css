@@ -90,13 +90,15 @@ input, select, textarea {
 }
 
 /* ================= WATERMARK =================
-   Only the centered watermark from page.tsx is used.
+   Single centered watermark from page.tsx.
+   If mask fails (file missing / unsupported), it becomes invisible (no pink).
 ================================================ */
-/* Ensure the card is solid white (no cream bleed-through) */
+
+/* Card is solid white so no cream shows through */
 .khh-card {
   position: relative;
   overflow: hidden;
-  background: #ffffff; /* pure white */
+  background: #ffffff;
 }
 
 /* Watermark wrapper */
@@ -107,20 +109,23 @@ input, select, textarea {
   align-items: center;
   justify-content: center;
   pointer-events: none;
-  background: #ffffff; /* keep the canvas white under the mask */
+  background: #ffffff; /* keep the canvas white under the shape */
 }
 
-/* Single-color barn, rendered via mask so the SVG’s own colors are ignored */
+/* Default: transparent (so no pink if mask fails) */
 .khh-wm__shape {
   width: min(92vw, 1200px);
   max-width: 1400px;
   aspect-ratio: 1 / 1;
+  background: transparent; /* no visible fill unless mask is supported */
+}
 
-  /* The mask uses the alpha of your barn SVG. */
-  -webkit-mask: url('/khh-barn.svg') center / contain no-repeat;
-  mask: url('/khh-barn.svg') center / contain no-repeat;
-
-  /* Light red fill (adjust alpha to taste). */
-  background: rgba(239, 68, 68, 0.10); /* red-500 @ 10% */
+/* Only apply the red fill when mask is supported */
+@supports ((-webkit-mask: url("")) or (mask: url(""))) {
+  .khh-wm__shape {
+    -webkit-mask: url('/khh-barn.svg') center / contain no-repeat;
+    mask: url('/khh-barn.svg') center / contain no-repeat;
+    background: rgba(239, 68, 68, 0.10); /* light red */
+  }
 }
 
