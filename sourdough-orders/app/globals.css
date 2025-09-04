@@ -90,18 +90,15 @@ input, select, textarea {
 }
 
 /* ================= WATERMARK =================
-   We REMOVE the old ::after watermark to prevent duplicates
-   and rely on the single centered watermark rendered in page.tsx
-   with the .khh-wm class below.
+   Only the centered watermark from page.tsx is used.
 ================================================ */
 
-/* Ensure the card can host the centered watermark safely */
+/* Ensure the card is solid white (no cream bleed-through) */
 .khh-card {
   position: relative;
   overflow: hidden;
+  background: #ffffff; /* force pure white */
 }
-
-/* >>> REMOVE ANY OLD .khh-card::after RULES (they caused duplicates) <<< */
 
 /* Single centered watermark layer (used by page.tsx) */
 .khh-wm {
@@ -111,14 +108,17 @@ input, select, textarea {
   align-items: center;
   justify-content: center;
   pointer-events: none; /* inputs remain clickable */
+  background: #ffffff;  /* ensures white behind barn */
 }
 
-/* If your /public/khh-barn.svg is already red, you can delete the filter line. */
+/* Barn image watermark */
 .khh-wm img {
   width: min(92vw, 1200px);
   max-width: 1400px;
   height: auto;
   opacity: 0.12; /* light */
-  /* Tint a neutral SVG toward light red: */
+  /* Tint a neutral SVG toward light red.
+     If your barn SVG is already red, delete this filter. */
   filter: sepia(1) saturate(6) hue-rotate(-10deg) brightness(1.05);
 }
+
