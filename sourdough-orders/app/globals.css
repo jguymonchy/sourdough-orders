@@ -92,33 +92,35 @@ input, select, textarea {
 /* ================= WATERMARK =================
    Only the centered watermark from page.tsx is used.
 ================================================ */
-
 /* Ensure the card is solid white (no cream bleed-through) */
 .khh-card {
   position: relative;
   overflow: hidden;
-  background: #ffffff; /* force pure white */
+  background: #ffffff; /* pure white */
 }
 
-/* Single centered watermark layer (used by page.tsx) */
+/* Watermark wrapper */
 .khh-wm {
   position: absolute;
   inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  pointer-events: none; /* inputs remain clickable */
-  background: #ffffff;  /* ensures white behind barn */
+  pointer-events: none;
+  background: #ffffff; /* keep the canvas white under the mask */
 }
 
-/* Barn image watermark */
-.khh-wm img {
+/* Single-color barn, rendered via mask so the SVG’s own colors are ignored */
+.khh-wm__shape {
   width: min(92vw, 1200px);
   max-width: 1400px;
-  height: auto;
-  opacity: 0.12; /* light */
-  /* Tint a neutral SVG toward light red.
-     If your barn SVG is already red, delete this filter. */
-  filter: sepia(1) saturate(6) hue-rotate(-10deg) brightness(1.05);
+  aspect-ratio: 1 / 1;
+
+  /* The mask uses the alpha of your barn SVG. */
+  -webkit-mask: url('/khh-barn.svg') center / contain no-repeat;
+  mask: url('/khh-barn.svg') center / contain no-repeat;
+
+  /* Light red fill (adjust alpha to taste). */
+  background: rgba(239, 68, 68, 0.10); /* red-500 @ 10% */
 }
 
