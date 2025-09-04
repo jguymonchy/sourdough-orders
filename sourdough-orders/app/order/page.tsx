@@ -128,27 +128,92 @@ export default function OrderPage() {
     setItems((prev) => prev.filter((_, i) => i !== idx));
   }
 
-  // ---- Submit (rip-and-replace) ----
-  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setSubmitting(true);
-    setMessage(null);
-    setKh(null);
+// ---------- Submit (rip-and-replace) ----------
+async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+  e.preventDefault();
+  setSubmitting(true);
+  setMessage(null);
+  setKh(null);
 
-    try {
-      const fd = new FormData(e.currentTarget);
+  try {
+    const fd = new FormData(e.currentTarget);
 
-      // if Pickup, clear address fields
-      const addressDisabled = method !== 'shipping';
-      if (addressDisabled) {
-        fd.set('address1', '');
-        fd.set('address2', '');
-        fd.set('city', '');
-        fd.set('state', '');
-        fd.set('postal', '');
-      }
+    // if Pickup, clear address fields
+    const addressDisabled = method !== 'shipping';
+    if (addressDisabled) {
+      fd.set('address1', '');
+      fd.set('address2', '');
+      fd.set('city', '');
+      fd.set('state', '');
+      fd.set('postal', '');
+    }
 
-      if (dateRef.current) validateOrSnapDate(dateRef.current);
+    if (dateRef.current) validateOrSnapDate(dateRef.current);
+
+    // Build items array with BOTH name + item + sku
+    const filtered = items.filter((i) => (i.qty || 0) > 0);
+    const itemsArray = filtered.map((line) => ({
+      sku: slugify(line.name),      // e.g., "jalapeno-cheddar"
+      name: line.name,              // what Apps Script reads for items_list + Order Items
+      item: line.name,              // keep for older code paths
+      qty: Number(line.qty || 0),
+      unit_price: PRICE_EACH,
+    }));
+
+    // Build payload (kept compatible with both old/new server shapes)
+    const payload = {
+      // canonical
+      customer_name: String(fd.get('name') || ''),
+      email: String(fd.get('email') || ''),
+      phone: String(fd.get('phone') || ''),
+      fulfillment: method, // 'pickup' | 'shipping'
+      pickup_date: String(fd.get('pickup_date') || ''),
+
+      address_line1: String(fd.get('address1') || ''),
+      address_line2: String(fd.get('address2') || ''),
+      city: String(fd.get('city') || ''),
+      state: String(fd.get('state') || ''),
+      postal_code: String(fd.get('postal') || ''),
+      notes: String(fd.get('notes') || ''),
+      items: itemsArray,
+
+      // aliases (older routes)
+      customerName: String(fd.get('name') || ''),
+      customerEmail: String(fd.get('email') || ''),
+      ship: method === 'shipping',
+      address1: String(fd.get('address1') || ''),
+      postal: String(fd.get('postal') || ''),
+    };
+
+    const res = await fetch('/api/order', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    const raw = await res.text(); // robust to empty/non-JSON
+    let data: ApiResponse | null = null;
+    try { data = raw ? (JSON.parse(raw) as ApiResponse) : null; } catch {
+      throw new Error(`Server returned non-JSON: ${raw?.slice(0, 200)}`);
+    }
+
+    if (!res.ok || !data?.ok) {
+      throw new Error(data?.error || `Request failed (status ${res.status})`);
+    }
+
+    setKh(data.kh ?? null);
+    setMessage(
+      `✅ Order placed! ${data.kh ? `Your ID is ${data.kh}` : 'Check your email for confirmation.'}`
+    );
+    setItems([]); // reset after submit
+    setPicker('');
+  } catch (err: any) {
+    setMessage(err?.message || 'Something went wrong. Please try again.');
+  } finally {
+    setSubmitting(false);
+  }
+}
+
 
       // Build items array (this is what the backend + Apps Script expect)
       const filtered = items.filter((i) => (i.qty || 0) > 0);
