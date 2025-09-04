@@ -98,34 +98,38 @@ export async function POST(req: Request) {
       );
     }
 
-    // 4) Send emails (non-blocking; failures won’t break the order)
-    const origin = new URL(req.url).origin;
-    const kh = shortId(data.id || "");
+   // 4) Send emails (non-blocking; failures won’t break the order)
+const origin = new URL(req.url).origin;
+const kh = shortId(data.id || "");
 
-    try {
-      await fetch(`${origin}/api/send-email`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          to: email,
-          subject: `Your order is confirmed — #${kh}`,
-          html: `<p>Thanks, ${customer_name}! Your order #${kh} is received.</p>`,
-        }),
-      });
-      await fetch(`${origin}/api/send-email`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          to: [process.env.ADMIN_NOTIFY_EMAIL || process.env.FROM_EMAIL],
-          subject: `NEW ORDER — #${kh}`,
-          html: `<p>${customer_name} placed an order. Items: ${
-            (items || []).map((i: any) => `${i.qty}× ${i.item || i.name}`).join(", ")
-          }</p>`,
-        }),
-      });
-    } catch (e) {
-      console.warn("[orders] email send skipped/failed", e);
-    }
+try {
+  // Customer email
+  await fetch(`${origin}/api/send-email`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      to: [email],   // <-- FIX: always array
+      subject: `Your order is confirmed — #${kh}`,
+      html: `<p>Thanks, ${customer_name}! Your order #${kh} is received.</p>`,
+    }),
+  });
+
+  // Admin email
+  await fetch(`${origin}/api/send-email`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      to: [process.env.ADMIN_NOTIFY_EMAIL || process.env.FROM_EMAIL],  // already array
+      subject: `NEW ORDER — #${kh}`,
+      html: `<p>${customer_name} placed an order. Items: ${
+        (items || []).map((i: any) => `${i.qty}× ${i.item || i.name}`).join(", ")
+      }</p>`,
+    }),
+  });
+} catch (e) {
+  console.warn("[orders] email send skipped/failed", e);
+}
+
 
     // 5) Return JSON so the form can show success
     return NextResponse.json({ ok: true, kh, order_id: data.id }, { status: 200 });
