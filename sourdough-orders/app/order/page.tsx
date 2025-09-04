@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-const LOGO_SRC = '/khh-logo.svg';   // top-centered logo
-const BARN_SRC = '/khh-barn.svg';   // barn-only SVG (monochrome is fine)
+const LOGO_SRC = '/khh-logo.svg';   // page-level centered logo
+const BARN_SRC = '/khh-barn.svg';   // barn-only SVG for watermark (any monochrome SVG works)
 
 type ApiResponse = { ok: boolean; kh?: string; venmo_note?: string; error?: string };
 
@@ -21,6 +21,12 @@ const CATALOG = [
 const PRICE_EACH = 10;
 
 export default function OrderPage() {
+  // Hide global header while this page is mounted
+  useEffect(() => {
+    document.body.classList.add('khh-hide-header');
+    return () => document.body.classList.remove('khh-hide-header');
+  }, []);
+
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [kh, setKh] = useState<string | null>(null);
@@ -164,18 +170,17 @@ export default function OrderPage() {
 
   return (
     <div className="container">
-      {/* Only one logo: the page-level centered logo (header is hidden via layout) */}
+      {/* Page-level centered logo */}
       <div style={{ display: 'flex', justifyContent: 'center', padding: '18px 0 6px' }}>
         <img src={LOGO_SRC} alt="Kanarra Heights Homestead" style={{ height: 84, width: 'auto' }} draggable={false} />
       </div>
 
       <div className="card khh-card" style={{ padding: 20 }}>
-        {/* SINGLE watermark (centered, light red) */}
+        {/* SINGLE centered watermark (light red) */}
         <div className="khh-wm">
           <img src={BARN_SRC} alt="" aria-hidden />
         </div>
 
-        {/* Content layer */}
         <div style={{ position: 'relative', zIndex: 1 }}>
           <h1 style={{ margin: '0 0 8px', fontSize: 22 }}>Kanarra Heights Homestead — Order</h1>
           <p style={{ margin: '0 0 16px', color: '#666' }}>
