@@ -175,11 +175,11 @@ export default function OrderPage() {
         <img src={LOGO_SRC} alt="Kanarra Heights Homestead" style={{ height: 84, width: 'auto' }} draggable={false} />
       </div>
 
-      <div className="card khh-card" style={{ padding: 20 }}>
-        {/* SINGLE centered watermark (light red) */}
-        <div className="khh-wm">
-          <img src={BARN_SRC} alt="" aria-hidden />
-        </div>
+      {/* SINGLE centered watermark (uniform light red via mask) */}
+<div className="khh-wm">
+  <div className="khh-wm__shape" />
+</div>
+
 
         <div style={{ position: 'relative', zIndex: 1 }}>
           <h1 style={{ margin: '0 0 8px', fontSize: 22 }}>Kanarra Heights Homestead — Order</h1>
