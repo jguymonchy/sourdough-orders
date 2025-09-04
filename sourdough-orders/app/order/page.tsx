@@ -2,9 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-const LOGO_SRC = '/khh-logo.svg';   // page-level centered logo
-const BARN_SRC = '/khh-barn.svg';   // barn SVG path used by CSS mask
-
 type ApiResponse = { ok: boolean; kh?: string; venmo_note?: string; error?: string };
 
 const CATALOG = [
@@ -21,20 +18,16 @@ const CATALOG = [
 const PRICE_EACH = 10;
 
 export default function OrderPage() {
-  // Hide global header while this page is mounted
-  useEffect(() => {
-    document.body.classList.add('khh-hide-header');
-    return () => document.body.classList.remove('khh-hide-header');
-  }, []);
-
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [kh, setKh] = useState<string | null>(null);
 
+  // Fulfillment + date behavior
   const [method, setMethod] = useState<'pickup' | 'shipping'>('pickup');
   const [dateHint, setDateHint] = useState<string>('');
   const dateRef = useRef<HTMLInputElement | null>(null);
 
+  // Items
   type Line = { name: string; qty: number };
   const [items, setItems] = useState<Line[]>([{ name: 'Sourdough Loaf', qty: 1 }]);
   const [picker, setPicker] = useState<string>(CATALOG[0]);
@@ -65,10 +58,14 @@ export default function OrderPage() {
   function nextDowFrom(from: Date, targetDow: number) {
     const d = new Date(from);
     d.setHours(0, 0, 0, 0);
-    do { d.setDate(d.getDate() + 1); } while (d.getDay() !== targetDow);
+    do {
+      d.setDate(d.getDate() + 1);
+    } while (d.getDay() !== targetDow);
     return d;
   }
-  function allowedDowFor(m: 'pickup' | 'shipping') { return m === 'pickup' ? 6 : 5; }
+  function allowedDowFor(m: 'pickup' | 'shipping') {
+    return m === 'pickup' ? 6 : 5; // Sat / Fri
+  }
   function ruleText(m: 'pickup' | 'shipping') {
     return m === 'pickup'
       ? 'Pickup is Saturdays at Festival City Farmers Market (Cedar City).'
@@ -109,12 +106,14 @@ export default function OrderPage() {
   }
 
   // ---------- Items helpers ----------
-  function addItem() {
-    if (!picker) return;
+  function addItemByName(name: string) {
+    if (!name) return;
     setItems((prev) => {
-      const found = prev.find((p) => p.name === picker);
-      if (found) return prev.map((p) => (p.name === picker ? { ...p, qty: p.qty + 1 } : p));
-      return [...prev, { name: picker, qty: 1 }];
+      const found = prev.find((p) => p.name === name);
+      if (found) {
+        return prev.map((p) => (p.name === name ? { ...p, qty: p.qty + 1 } : p));
+      }
+      return [...prev, { name, qty: 1 }];
     });
   }
   function setQty(idx: number, qty: number) {
@@ -134,14 +133,19 @@ export default function OrderPage() {
     try {
       const fd = new FormData(e.currentTarget);
 
+      // Clear address fields when Pickup
       const addressDisabled = method !== 'shipping';
       if (addressDisabled) {
-        fd.set('address1', ''); fd.set('address2', ''); fd.set('city', '');
-        fd.set('state', ''); fd.set('postal', '');
+        fd.set('address1', '');
+        fd.set('address2', '');
+        fd.set('city', '');
+        fd.set('state', '');
+        fd.set('postal', '');
       }
 
       if (dateRef.current) validateOrSnapDate(dateRef.current);
 
+      // Build payload + map items
       const payload: Record<string, any> = Object.fromEntries(fd.entries());
       const filtered = items.filter((i) => (i.qty || 0) > 0);
       filtered.forEach((line, idx) => {
@@ -173,27 +177,23 @@ export default function OrderPage() {
 
   return (
     <div className="container">
-      {/* Page-level centered logo */}
-      <div style={{ display: 'flex', justifyContent: 'center', padding: '18px 0 6px' }}>
-        <img src={LOGO_SRC} alt="Kanarra Heights Homestead" style={{ height: 84, width: 'auto' }} draggable={false} />
-      </div>
-
-      <div className="card khh-card" style={{ padding: 20 }}>
-        {/* SINGLE centered watermark (uniform light red via CSS mask) */}
-        <div className="khh-wm">
+      <div className="card khh-card" style={{ padding: 20, position: 'relative' }}>
+        {/* BIG centered watermark */}
+        <div className="khh-wm" aria-hidden>
           <div className="khh-wm__shape" />
         </div>
 
-        {/* Content layer */}
+        {/* Content layer above watermark */}
         <div style={{ position: 'relative', zIndex: 1 }}>
-          <h1 style={{ margin: '0 0 8px', fontSize: 22 }}>Kanarra Heights Homestead — Order</h1>
+          {/* ===== Title text changed here ===== */}
+          <h1 style={{ margin: '0 0 8px', fontSize: 22 }}>Artisan Sourdough Bread — Order</h1>
           <p style={{ margin: '0 0 16px', color: '#666' }}>
             Choose <b>Pickup</b> or <b>Shipping</b>, then complete your details.
           </p>
 
           <form onSubmit={onSubmit}>
-            {/* Contact */}
             <div style={{ display: 'grid', gap: 12 }}>
+              {/* Contact */}
               <div>
                 <label style={{ fontWeight: 600, fontSize: 14 }}>Full Name</label>
                 <input name="name" placeholder="Jane Doe" required />
@@ -245,7 +245,12 @@ export default function OrderPage() {
               {/* Date */}
               <div>
                 <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>Date</label>
-                <input ref={dateRef} name="pickup_date" type="date" onBlur={(e) => validateOrSnapDate(e.currentTarget)} />
+                <input
+                  ref={dateRef}
+                  name="pickup_date"
+                  type="date"
+                  onBlur={(e) => validateOrSnapDate(e.currentTarget)}
+                />
                 <div style={{ marginTop: 6, color: '#666', fontSize: 12 }}>{dateHint || ruleText(method)}</div>
               </div>
 
@@ -276,21 +281,26 @@ export default function OrderPage() {
 
               {/* Items */}
               <div style={{ marginTop: 6, fontWeight: 700, fontSize: 15 }}>Items</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px 120px', gap: 12, alignItems: 'end' }}>
-                <div>
-                  <label style={{ fontWeight: 600, fontSize: 14, display: 'block', marginBottom: 6 }}>Choose a bread</label>
-                  <select value={picker} onChange={(e) => setPicker(e.target.value)}>
-                    {CATALOG.map((name) => (
-                      <option key={name} value={name}>{name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <button type="button" onClick={addItem} className="primary" style={{ width: '100%' }}>
-                    Add item
-                  </button>
-                </div>
-                <div />
+
+              {/* ===== Label text + full-width selector; auto-add on change ===== */}
+              <div>
+                <label style={{ fontWeight: 600, fontSize: 14, display: 'block', marginBottom: 6 }}>
+                  Choose a Bread Flavor
+                </label>
+                <select
+                  value={picker}
+                  onChange={(e) => {
+                    const name = e.target.value;
+                    setPicker(name);
+                    addItemByName(name); // auto-add or increment
+                  }}
+                >
+                  {CATALOG.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               {items.length > 0 && (
@@ -333,7 +343,15 @@ export default function OrderPage() {
                         <button
                           type="button"
                           onClick={() => removeItem(idx)}
-                          style={{ appearance: 'none', border: 'none', background: '#eee', color: '#333', padding: '10px 12px', borderRadius: 10, cursor: 'pointer' }}
+                          style={{
+                            appearance: 'none',
+                            border: 'none',
+                            background: '#eee',
+                            color: '#333',
+                            padding: '10px 12px',
+                            borderRadius: 10,
+                            cursor: 'pointer',
+                          }}
                         >
                           Remove
                         </button>
@@ -370,7 +388,6 @@ export default function OrderPage() {
         </div>
       </div>
 
-      {/* Footer note (fixed fontSize = 12) */}
       <div style={{ marginTop: 14, fontSize: 12, color: '#777', textAlign: 'center' }}>
         Pickup is Saturdays at Festival City Farmers Market (Cedar City). Shipping runs Fridays (US only).
       </div>
