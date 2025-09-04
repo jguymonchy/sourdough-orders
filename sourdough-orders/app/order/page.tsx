@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-const LOGO_SRC = '/khh-logo.svg';       // full logo for the top center
-const BARN_SRC = '/khh-barn.svg';       // barn-only SVG for watermark
+const LOGO_SRC = '/khh-logo.svg';   // top-centered logo
+const BARN_SRC = '/khh-barn.svg';   // barn-only SVG (monochrome is fine)
 
 type ApiResponse = { ok: boolean; kh?: string; venmo_note?: string; error?: string };
 
@@ -25,12 +25,10 @@ export default function OrderPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [kh, setKh] = useState<string | null>(null);
 
-  // Fulfillment + date behavior
   const [method, setMethod] = useState<'pickup' | 'shipping'>('pickup');
   const [dateHint, setDateHint] = useState<string>('');
   const dateRef = useRef<HTMLInputElement | null>(null);
 
-  // Items (dropdown -> lines with qty)
   type Line = { name: string; qty: number };
   const [items, setItems] = useState<Line[]>([{ name: 'Sourdough Loaf', qty: 1 }]);
   const [picker, setPicker] = useState<string>(CATALOG[0]);
@@ -47,7 +45,6 @@ export default function OrderPage() {
     }
   }, [message]);
 
-  // ---------- Date helpers ----------
   function toYMD(d: Date) {
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -61,14 +58,10 @@ export default function OrderPage() {
   function nextDowFrom(from: Date, targetDow: number) {
     const d = new Date(from);
     d.setHours(0, 0, 0, 0);
-    do {
-      d.setDate(d.getDate() + 1);
-    } while (d.getDay() !== targetDow);
+    do { d.setDate(d.getDate() + 1); } while (d.getDay() !== targetDow);
     return d;
   }
-  function allowedDowFor(m: 'pickup' | 'shipping') {
-    return m === 'pickup' ? 6 : 5; // Sat : Fri
-  }
+  function allowedDowFor(m: 'pickup' | 'shipping') { return m === 'pickup' ? 6 : 5; }
   function ruleText(m: 'pickup' | 'shipping') {
     return m === 'pickup'
       ? 'Pickup is Saturdays at Festival City Farmers Market (Cedar City).'
@@ -108,7 +101,6 @@ export default function OrderPage() {
     }
   }
 
-  // ---------- Items helpers ----------
   function addItem() {
     if (!picker) return;
     setItems((prev) => {
@@ -124,7 +116,6 @@ export default function OrderPage() {
     setItems((prev) => prev.filter((_, i) => i !== idx));
   }
 
-  // ---------- Submit ----------
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setSubmitting(true);
@@ -134,14 +125,10 @@ export default function OrderPage() {
     try {
       const fd = new FormData(e.currentTarget);
 
-      // Clear address fields when Pickup
       const addressDisabled = method !== 'shipping';
       if (addressDisabled) {
-        fd.set('address1', '');
-        fd.set('address2', '');
-        fd.set('city', '');
-        fd.set('state', '');
-        fd.set('postal', '');
+        fd.set('address1', ''); fd.set('address2', ''); fd.set('city', '');
+        fd.set('state', ''); fd.set('postal', '');
       }
 
       if (dateRef.current) validateOrSnapDate(dateRef.current);
@@ -177,39 +164,18 @@ export default function OrderPage() {
 
   return (
     <div className="container">
-      {/* Centered logo (≈2×) */}
+      {/* Only one logo: the page-level centered logo (header is hidden via layout) */}
       <div style={{ display: 'flex', justifyContent: 'center', padding: '18px 0 6px' }}>
         <img src={LOGO_SRC} alt="Kanarra Heights Homestead" style={{ height: 84, width: 'auto' }} draggable={false} />
       </div>
 
-      <div className="card khh-card" style={{ padding: 20, position: 'relative' }}>
-        {/* SINGLE centered watermark — light red, very large */}
-        <div
-          aria-hidden
-          style={{
-            position: 'absolute',
-            inset: 0,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            pointerEvents: 'none',
-          }}
-        >
-          {/* Mask method (tints the SVG perfectly red); falls back to <img> if masks unsupported */}
-          <div
-            style={{
-              width: 'min(92vw, 1200px)',
-              maxWidth: '1400px',
-              aspectRatio: '1 / 1',
-              WebkitMask: `url(${BARN_SRC}) center / contain no-repeat`,
-              mask: `url(${BARN_SRC}) center / contain no-repeat`,
-              backgroundColor: 'rgb(239 68 68)', // red-500
-              opacity: 0.12, // nice and light
-            }}
-          />
+      <div className="card khh-card" style={{ padding: 20 }}>
+        {/* SINGLE watermark (centered, light red) */}
+        <div className="khh-wm">
+          <img src={BARN_SRC} alt="" aria-hidden />
         </div>
 
-        {/* Content layer above watermark */}
+        {/* Content layer */}
         <div style={{ position: 'relative', zIndex: 1 }}>
           <h1 style={{ margin: '0 0 8px', fontSize: 22 }}>Kanarra Heights Homestead — Order</h1>
           <p style={{ margin: '0 0 16px', color: '#666' }}>
@@ -270,12 +236,7 @@ export default function OrderPage() {
               {/* Date */}
               <div>
                 <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>Date</label>
-                <input
-                  ref={dateRef}
-                  name="pickup_date"
-                  type="date"
-                  onBlur={(e) => validateOrSnapDate(e.currentTarget)}
-                />
+                <input ref={dateRef} name="pickup_date" type="date" onBlur={(e) => validateOrSnapDate(e.currentTarget)} />
                 <div style={{ marginTop: 6, color: '#666', fontSize: 12 }}>{dateHint || ruleText(method)}</div>
               </div>
 
@@ -311,9 +272,7 @@ export default function OrderPage() {
                   <label style={{ fontWeight: 600, fontSize: 14, display: 'block', marginBottom: 6 }}>Choose a bread</label>
                   <select value={picker} onChange={(e) => setPicker(e.target.value)}>
                     {CATALOG.map((name) => (
-                      <option key={name} value={name}>
-                        {name}
-                      </option>
+                      <option key={name} value={name}>{name}</option>
                     ))}
                   </select>
                 </div>
