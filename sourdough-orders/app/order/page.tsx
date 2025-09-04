@@ -47,6 +47,11 @@ export default function OrderPage() {
     }
   }, [message]);
 
+  function slugify(s: string) {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
+
   // ---- Date helpers ----
   function toYMD(d: Date) {
     const y = d.getFullYear();
