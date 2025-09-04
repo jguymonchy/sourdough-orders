@@ -11,7 +11,7 @@
   --khh-card: #ffffff;        /* cards */
 }
 
-/* ----- Global box sizing (fixes “inputs hanging off right side”) ----- */
+/* ----- Global box sizing ----- */
 *,
 *::before,
 *::after {
@@ -26,14 +26,14 @@ html, body {
   font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
 }
 
-/* ----- Simple container so content never hugs edges on mobile ----- */
+/* ----- Simple container (mobile-friendly gutters) ----- */
 .container {
   max-width: 720px;
   margin: 0 auto;
   padding: 16px;
 }
 
-/* ----- Header styles ----- */
+/* ----- Header styles (site-wide) ----- */
 .khh-header {
   background: #f3ede2;
   border-bottom: 1px solid var(--khh-border);
@@ -76,28 +76,6 @@ button.primary {
 button.primary:hover { background: var(--khh-olive-2); }
 button.primary:disabled { opacity: .65; cursor: default; }
 
-/* ----- Watermark inside the order card ----- */
-.khh-card {
-  position: relative;
-  overflow: hidden; /* clip watermark blur/edges */
-}
-.khh-card::after {
-  /* light barn logo watermark */
-  content: "";
-  position: absolute;
-  right: -8%;
-  bottom: -6%;
-  width: 55%;
-  height: 55%;
-  background-image: url('/khh-logo.svg');
-  background-repeat: no-repeat;
-  background-size: contain;
-  background-position: center;
-  opacity: 0.06;              /* very light */
-  filter: grayscale(100%) contrast(80%) brightness(1.1);
-  pointer-events: none;
-}
-
 /* ----- Form elements sanity (avoid visual overflow) ----- */
 input, select, textarea {
   width: 100%;
@@ -106,4 +84,38 @@ input, select, textarea {
   padding: 12px;
   font-size: 16px;
   background: #fff;
+}
+
+/* ================= WATERMARK =================
+   We REMOVE the old ::after watermark to prevent duplicates
+   and rely on the single centered watermark rendered in page.tsx
+   with the .khh-wm class below.
+================================================ */
+
+/* Ensure the card can host the centered watermark safely */
+.khh-card {
+  position: relative;
+  overflow: hidden;
+}
+
+/* >>> REMOVE ANY OLD .khh-card::after RULES (they caused duplicates) <<< */
+
+/* Single centered watermark layer (used by page.tsx) */
+.khh-wm {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none; /* inputs remain clickable */
+}
+
+/* If your /public/khh-barn.svg is already red, you can delete the filter line. */
+.khh-wm img {
+  width: min(92vw, 1200px);
+  max-width: 1400px;
+  height: auto;
+  opacity: 0.12; /* light */
+  /* Tint a neutral SVG toward light red: */
+  filter: sepia(1) saturate(6) hue-rotate(-10deg) brightness(1.05);
 }
