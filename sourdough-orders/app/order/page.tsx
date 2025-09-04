@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-const BARN_WATERMARK_SRC = '/Barn-only'; // <-- barn-only SVG for watermark
-const LOGO_SRC = '/khh-logo.svg';           // <-- full logo (wordmark)
+const LOGO_SRC = '/khh-logo.svg';       // full logo for the top center
+const BARN_SRC = '/barn_only.png';       // barn-only SVG for watermark
 
 type ApiResponse = { ok: boolean; kh?: string; venmo_note?: string; error?: string };
 
@@ -47,7 +47,7 @@ export default function OrderPage() {
     }
   }, [message]);
 
-  // ---------- Date helpers (always snap to the NEXT valid day) ----------
+  // ---------- Date helpers ----------
   function toYMD(d: Date) {
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -58,7 +58,6 @@ export default function OrderPage() {
     const [y, m, d] = ymd.split('-').map(Number);
     return new Date(y, m - 1, d);
   }
-  // get the *next* occurrence of targetDow strictly in the future from "from"
   function nextDowFrom(from: Date, targetDow: number) {
     const d = new Date(from);
     d.setHours(0, 0, 0, 0);
@@ -68,7 +67,7 @@ export default function OrderPage() {
     return d;
   }
   function allowedDowFor(m: 'pickup' | 'shipping') {
-    return m === 'pickup' ? 6 /* Sat */ : 5 /* Fri */;
+    return m === 'pickup' ? 6 : 5; // Sat : Fri
   }
   function ruleText(m: 'pickup' | 'shipping') {
     return m === 'pickup'
@@ -76,7 +75,6 @@ export default function OrderPage() {
       : 'Shipping goes out on Fridays (US only).';
   }
 
-  // When method changes, pick the next valid day from *today*
   useEffect(() => {
     const el = dateRef.current;
     const allowed = allowedDowFor(method);
@@ -88,7 +86,6 @@ export default function OrderPage() {
     }
   }, [method]);
 
-  // If user picks a non-valid day, snap to the next valid day from that pick
   function validateOrSnapDate(el: HTMLInputElement) {
     if (!el.value) return;
     try {
@@ -116,9 +113,7 @@ export default function OrderPage() {
     if (!picker) return;
     setItems((prev) => {
       const found = prev.find((p) => p.name === picker);
-      if (found) {
-        return prev.map((p) => (p.name === picker ? { ...p, qty: p.qty + 1 } : p));
-      }
+      if (found) return prev.map((p) => (p.name === picker ? { ...p, qty: p.qty + 1 } : p));
       return [...prev, { name: picker, qty: 1 }];
     });
   }
@@ -149,10 +144,8 @@ export default function OrderPage() {
         fd.set('postal', '');
       }
 
-      // Ensure date is valid before sending
       if (dateRef.current) validateOrSnapDate(dateRef.current);
 
-      // Build payload + map items -> item1_name/item1_qty, ...
       const payload: Record<string, any> = Object.fromEntries(fd.entries());
       const filtered = items.filter((i) => (i.qty || 0) > 0);
       filtered.forEach((line, idx) => {
@@ -172,7 +165,6 @@ export default function OrderPage() {
 
       setKh(data.kh ?? null);
       setMessage(`✅ Order placed! ${data.kh ? `Your ID is ${data.kh}` : 'Check your email for confirmation.'}`);
-      // reset items to a single default row
       setItems([{ name: 'Sourdough Loaf', qty: 1 }]);
     } catch (err: any) {
       setMessage(err?.message || 'Something went wrong. Please try again.');
@@ -185,18 +177,13 @@ export default function OrderPage() {
 
   return (
     <div className="container">
-      {/* === Top-centered logo (≈2× bigger) === */}
-      <div style={{ display: 'flex', justifyContent: 'center', padding: '20px 0 8px' }}>
-        <img
-          src={LOGO_SRC}
-          alt="Kanarra Heights Homestead"
-          draggable={false}
-          style={{ height: 80, width: 'auto' }} // ← adjust if you want even larger
-        />
+      {/* Centered logo (≈2×) */}
+      <div style={{ display: 'flex', justifyContent: 'center', padding: '18px 0 6px' }}>
+        <img src={LOGO_SRC} alt="Kanarra Heights Homestead" style={{ height: 84, width: 'auto' }} draggable={false} />
       </div>
 
       <div className="card khh-card" style={{ padding: 20, position: 'relative' }}>
-        {/* === SINGLE centered watermark (light red, huge) === */}
+        {/* SINGLE centered watermark — light red, very large */}
         <div
           aria-hidden
           style={{
@@ -208,16 +195,16 @@ export default function OrderPage() {
             pointerEvents: 'none',
           }}
         >
-          {/* Use a mask so we can tint the barn any color */}
+          {/* Mask method (tints the SVG perfectly red); falls back to <img> if masks unsupported */}
           <div
             style={{
-              width: 'min(90vw, 1200px)',           // big — at least ~4× the previous
+              width: 'min(92vw, 1200px)',
               maxWidth: '1400px',
               aspectRatio: '1 / 1',
-              opacity: 0.12,                         // faint
-              WebkitMask: `url(${BARN_WATERMARK_SRC}) center / contain no-repeat`,
-              mask: `url(${BARN_WATERMARK_SRC}) center / contain no-repeat`,
-              backgroundColor: 'rgb(239 68 68)',     // tailwind red-500 → “light red” after opacity
+              WebkitMask: `url(${BARN_SRC}) center / contain no-repeat`,
+              mask: `url(${BARN_SRC}) center / contain no-repeat`,
+              backgroundColor: 'rgb(239 68 68)', // red-500
+              opacity: 0.12, // nice and light
             }}
           />
         </div>
