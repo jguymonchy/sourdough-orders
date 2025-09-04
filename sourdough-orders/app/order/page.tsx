@@ -2,6 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 
+const BARN_WATERMARK_SRC = '/Barn-only'; // <-- barn-only SVG for watermark
+const LOGO_SRC = '/khh-logo.svg';           // <-- full logo (wordmark)
+
 type ApiResponse = { ok: boolean; kh?: string; venmo_note?: string; error?: string };
 
 const CATALOG = [
@@ -182,8 +185,18 @@ export default function OrderPage() {
 
   return (
     <div className="container">
+      {/* === Top-centered logo (≈2× bigger) === */}
+      <div style={{ display: 'flex', justifyContent: 'center', padding: '20px 0 8px' }}>
+        <img
+          src={LOGO_SRC}
+          alt="Kanarra Heights Homestead"
+          draggable={false}
+          style={{ height: 80, width: 'auto' }} // ← adjust if you want even larger
+        />
+      </div>
+
       <div className="card khh-card" style={{ padding: 20, position: 'relative' }}>
-        {/* BIG centered watermark */}
+        {/* === SINGLE centered watermark (light red, huge) === */}
         <div
           aria-hidden
           style={{
@@ -193,13 +206,19 @@ export default function OrderPage() {
             alignItems: 'center',
             justifyContent: 'center',
             pointerEvents: 'none',
-            opacity: 0.06,
           }}
         >
-          <img
-            src="/khh-logo.svg"
-            alt=""
-            style={{ width: '50%', height: '50%', objectFit: 'contain', filter: 'grayscale(100%) contrast(85%)' }}
+          {/* Use a mask so we can tint the barn any color */}
+          <div
+            style={{
+              width: 'min(90vw, 1200px)',           // big — at least ~4× the previous
+              maxWidth: '1400px',
+              aspectRatio: '1 / 1',
+              opacity: 0.12,                         // faint
+              WebkitMask: `url(${BARN_WATERMARK_SRC}) center / contain no-repeat`,
+              mask: `url(${BARN_WATERMARK_SRC}) center / contain no-repeat`,
+              backgroundColor: 'rgb(239 68 68)',     // tailwind red-500 → “light red” after opacity
+            }}
           />
         </div>
 
@@ -402,4 +421,5 @@ export default function OrderPage() {
     </div>
   );
 }
+
 
