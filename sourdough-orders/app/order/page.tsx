@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 const LOGO_SRC = '/khh-logo.svg';   // page-level centered logo
-const BARN_SRC = '/khh-barn.svg';   // barn-only SVG for watermark (any monochrome SVG works)
+const BARN_SRC = '/khh-barn.svg';   // barn SVG path used by CSS mask
 
 type ApiResponse = { ok: boolean; kh?: string; venmo_note?: string; error?: string };
 
@@ -51,6 +51,7 @@ export default function OrderPage() {
     }
   }, [message]);
 
+  // ---------- Date helpers ----------
   function toYMD(d: Date) {
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -107,6 +108,7 @@ export default function OrderPage() {
     }
   }
 
+  // ---------- Items helpers ----------
   function addItem() {
     if (!picker) return;
     setItems((prev) => {
@@ -122,6 +124,7 @@ export default function OrderPage() {
     setItems((prev) => prev.filter((_, i) => i !== idx));
   }
 
+  // ---------- Submit ----------
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setSubmitting(true);
@@ -175,12 +178,13 @@ export default function OrderPage() {
         <img src={LOGO_SRC} alt="Kanarra Heights Homestead" style={{ height: 84, width: 'auto' }} draggable={false} />
       </div>
 
-      {/* SINGLE centered watermark (uniform light red via mask) */}
-<div className="khh-wm">
-  <div className="khh-wm__shape" />
-</div>
+      <div className="card khh-card" style={{ padding: 20 }}>
+        {/* SINGLE centered watermark (uniform light red via CSS mask) */}
+        <div className="khh-wm">
+          <div className="khh-wm__shape" />
+        </div>
 
-
+        {/* Content layer */}
         <div style={{ position: 'relative', zIndex: 1 }}>
           <h1 style={{ margin: '0 0 8px', fontSize: 22 }}>Kanarra Heights Homestead — Order</h1>
           <p style={{ margin: '0 0 16px', color: '#666' }}>
@@ -366,6 +370,7 @@ export default function OrderPage() {
         </div>
       </div>
 
+      {/* Footer note (fixed fontSize = 12) */}
       <div style={{ marginTop: 14, fontSize: 12, color: '#777', textAlign: 'center' }}>
         Pickup is Saturdays at Festival City Farmers Market (Cedar City). Shipping runs Fridays (US only).
       </div>
