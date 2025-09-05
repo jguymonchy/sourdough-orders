@@ -226,6 +226,19 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: `Supabase insert failed: ${error.message}` }, { status: 500 });
     }
 
+// --- NEW: ensure kh_short_id is present on the stored row that webhooks/readers will see
+// (Some webhook setups read the row before computed fields land; this guarantees persistence.)
+try {
+  if (!insert.kh_short_id || insert.kh_short_id !== kh_short) {
+    await supabase
+      .from("orders")
+      .update({ kh_short_id: kh_short })
+      .eq("id", insert.id);
+  }
+} catch (e) {
+  console.warn("[orders] failed to ensure kh_short_id on row", e);
+}
+    
     // Emails
     const origin = new URL(req.url).origin;
 
