@@ -100,7 +100,7 @@ function renderEmailHTML(opts: {
       <p style="margin:4px 0 0 0">${esc(email)}</p>
       ${phone ? `<p style="margin:4px 0 0 0">${esc(phone)}</p>` : ""}
 
-      <h3 style="margin:16px 0 6px;font-size:16px">${opts.ship ? "Delivery" : "Pickup"}</h3>
+      <h3 style="margin:16px 0 6px;font-size:16px">${opts.ship ? "Shipping" : "Pickup"}</h3>
       ${addrHTML}
 
       <h3 style="margin:24px 0 8px;font-size:16px">Items</h3>
@@ -131,7 +131,7 @@ function renderEmailHTML(opts: {
       ${noteBlock}
       ${isAdmin
         ? `<p style="color:#999;font-size:12px;margin-top:20px">This notification was sent to ADMIN_NOTIFY_EMAIL.</p>`
-        : `<p style="color:#444;font-size:13px;margin-top:20px">Reply to this email if you have questions. For Venmo, include your order ID <b>#${kh}</b>.</p>`}
+        : `<p style="color:#444;font-size:13px;margin-top:20px">Reply if you have questions. For Venmo, include your order ID <b>#${kh}</b>.</p>`}
     </td></tr>
     <tr><td style="padding:16px 24px;border-top:1px solid #eee;color:#888;font-size:12px">— Kanarra Heights Homestead</td></tr>
   </table>
@@ -190,7 +190,7 @@ export async function POST(req: Request) {
     const notes = first(raw.notes, raw.orderNotes, raw.comment) || null;
     const phone = first(raw.phone, raw?.contact?.phone) || null;
 
-    // 👉 Get KH### FIRST (so it's present in the inserted row that the webhook sees)
+    // Get KH### FIRST (so it's present in the inserted row that the webhook sees)
     const { data: seqData, error: seqErr } = await supabase.rpc("next_kh_seq", {
       p_week_key: week_key,
       p_week_start: week_start,
@@ -226,19 +226,19 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: `Supabase insert failed: ${error.message}` }, { status: 500 });
     }
 
-// --- NEW: ensure kh_short_id is present on the stored row that webhooks/readers will see
-// (Some webhook setups read the row before computed fields land; this guarantees persistence.)
-try {
-  if (!insert.kh_short_id || insert.kh_short_id !== kh_short) {
-    await supabase
-      .from("orders")
-      .update({ kh_short_id: kh_short })
-      .eq("id", insert.id);
-  }
-} catch (e) {
-  console.warn("[orders] failed to ensure kh_short_id on row", e);
-}
-    
+    // --- Ensure kh_short_id is persisted on the stored row the webhook/Sheets will read
+    try {
+      const order = inserted!;
+      if (!order.kh_short_id || order.kh_short_id !== kh_short) {
+        await supabase
+          .from("orders")
+          .update({ kh_short_id: kh_short })
+          .eq("id", order.id);
+      }
+    } catch (e) {
+      console.warn("[orders] failed to ensure kh_short_id on row", e);
+    }
+
     // Emails
     const origin = new URL(req.url).origin;
 
@@ -271,9 +271,10 @@ try {
     const adminTo = [process.env.ADMIN_NOTIFY_EMAIL || process.env.FROM_EMAIL].filter(Boolean) as string[];
     await send(adminTo, `NEW ORDER — #${kh_short}`, adminHTML, adminText, "admin");
 
-    return NextResponse.json({ ok: true, kh: kh_short, order_id: inserted.id }, { status: 200 });
+    return NextResponse.json({ ok: true, kh: kh_short, order_id: inserted!.id }, { status: 200 });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e?.message || "Unknown error" }, { status: 500 });
   }
 }
+
 
