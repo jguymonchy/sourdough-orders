@@ -45,6 +45,20 @@ function currency(n: number | null | undefined) {
   return `$${val.toFixed(2)}`;
 }
 
+function summarizeItems(lines: Line[]) {
+  const rows = (lines || []).map(i => {
+    const name = i.name || i.item || "Item";
+    const qty = Number(i.qty || 0);
+    const price = Number(i.unit_price || 0);
+    const line_total = qty * price;
+    return { name, qty, price, line_total };
+  });
+  const items_list = rows.map(r => `${r.qty}× ${r.name}`).join(", ");
+  const items_count = rows.reduce((s, r) => s + r.qty, 0);
+  const order_total = rows.reduce((s, r) => s + r.line_total, 0);
+  return { rows, items_list, items_count, order_total };
+}
+
 function renderEmailHTML(opts: {
   kh: string; customer_name: string; email: string; phone?: string | null;
   ship: boolean; address_line1?: string | null; address_line2?: string | null;
@@ -56,14 +70,7 @@ function renderEmailHTML(opts: {
     country = "USA", notes, items, isAdmin
   } = opts;
 
-  const rows = (items || []).map(i => {
-    const nm = i.name || i.item || "Item";
-    const qty = Number(i.qty || 0);
-    const price = Number(i.unit_price || 0);
-    const line = qty * price;
-    return { name: nm, qty, price, line };
-  });
-  const total = rows.reduce((s, r) => s + r.line, 0);
+  const { rows, order_total } = summarizeItems(items);
 
   const addrHTML = ship
     ? `
@@ -112,12 +119,12 @@ function renderEmailHTML(opts: {
               <td style="padding:8px;border-bottom:1px solid #f3f3f3">${esc(r.name)}</td>
               <td align="right" style="padding:8px;border-bottom:1px solid #f3f3f3;text-align:right">${r.qty}</td>
               <td align="right" style="padding:8px;border-bottom:1px solid #f3f3f3;text-align:right">${currency(r.price)}</td>
-              <td align="right" style="padding:8px;border-bottom:1px solid #f3f3f3;text-align:right">${currency(r.line)}</td>
+              <td align="right" style="padding:8px;border-bottom:1px solid #f3f3f3;text-align:right">${currency(r.line_total)}</td>
             </tr>`).join("")}
           <tr>
             <td></td><td></td>
             <td align="right" style="padding:10px 8px;font-weight:700;text-align:right">Total</td>
-            <td align="right" style="padding:10px 8px;font-weight:700;text-align:right">${currency(total)}</td>
+            <td align="right" style="padding:10px 8px;font-weight:700;text-align:right">${currency(order_total)}</td>
           </tr>
         </tbody>
       </table>
@@ -150,6 +157,7 @@ export async function POST(req: Request) {
   const raw = parsed.data;
 
   try {
+    // ——— Normalize inputs
     const email = first(raw.email, raw.customerEmail, raw?.contact?.email) || "";
     if (!email) return NextResponse.json({ ok: false, error: "Missing email" }, { status: 400 });
 
@@ -159,20 +167,21 @@ export async function POST(req: Request) {
 
     const method = first(raw.fulfillment, raw.fulfillment_method) || (raw.ship ? "shipping" : "pickup");
     const ship = method === "shipping" || !!raw.ship;
+    const order_type = ship ? "shipping" : "pickup";
+
     const items: Line[] = Array.isArray(raw.items) ? raw.items : [];
+    const { rows, items_list, items_count, order_total } = summarizeItems(items);
 
     const pickup_date_s = first(raw.pickup_date);
-    // Determine the *batch date* that defines the week_key
     let batchDate: Date | null = fromYMD(pickup_date_s);
     if (!batchDate) {
-      // Snap if client didn't send a date
-      const targetDow = ship ? 5 /* Friday */ : 6 /* Saturday */;
+      const targetDow = ship ? 5 /* Fri */ : 6 /* Sat */;
       batchDate = nextDowFrom(new Date(), targetDow);
     }
-    const week_key = toYMD(batchDate!);      // e.g., '2025-09-13'
-    const week_start = week_key;             // same as key; easy to read in Sheets
+    const week_key = toYMD(batchDate!);
+    const week_start = week_key;
 
-    // Insert order first
+    // ——— Address & misc
     const address_line1 = first(raw.address_line1, raw.address1, raw.addressLine1, raw.street) || null;
     const address_line2 = first(raw.address_line2, raw.address2, raw.addressLine2, raw.apt, raw.unit, raw.suite) || null;
     const city = first(raw.city) || null;
@@ -182,13 +191,22 @@ export async function POST(req: Request) {
     const notes = first(raw.notes, raw.orderNotes, raw.comment) || null;
     const phone = first(raw.phone, raw?.contact?.phone) || null;
 
-    const { data, error } = await supabase
+    // ——— Insert base order
+    const { data: inserted, error } = await supabase
       .from("orders")
       .insert({
-        customer_name, email, phone, ship,
+        customer_name, email, phone,
+        ship,
+        order_type,
+        pickup_date: order_type === "pickup" ? batchDate : null,
+        ship_date:  order_type === "shipping" ? batchDate : null,
         address_line1, address_line2, city, state, postal_code, country,
-        items, notes, status: "open",
-        batch_week_key: week_key,        // optional helper column in your table
+        items, notes,
+        status: "open",
+        items_count,
+        items_list,
+        order_total,
+        batch_week_key: week_key
       })
       .select()
       .single();
@@ -197,7 +215,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: `Supabase insert failed: ${error.message}` }, { status: 500 });
     }
 
-    // Atomically get KH### for this week
+    // ——— Get KH### for the week
     const { data: seqData, error: seqErr } = await supabase.rpc("next_kh_seq", {
       p_week_key: week_key,
       p_week_start: week_start,
@@ -206,14 +224,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: `Counter RPC failed: ${seqErr.message}` }, { status: 500 });
     }
     const seq = Number(seqData || 1);
-    const kh_short = `KH${String(seq).padStart(3, "0")}`; // KH001, KH002, …
+    const kh_short = `KH${String(seq).padStart(3, "0")}`;
 
-    // Persist to order row so Apps Script → Sheets can read it
-    await supabase.from("orders").update({ kh_short_id: kh_short }).eq("id", data.id);
+    // Update row with KH id so Sheets can read it
+    await supabase.from("orders").update({ kh_short_id: kh_short }).eq("id", inserted.id);
 
-    // Prepare emails
+    // ——— Emails
     const origin = new URL(req.url).origin;
-    const itemsLine = (items || []).map((i) => `${i.qty}× ${i.item || i.name}`).join(", ");
+    const itemsLine = rows.map((r) => `${r.qty}× ${r.name}`).join(", ");
 
     async function send(to: string[], subject: string, html: string, text: string, tag: string) {
       const resp = await fetch(`${origin}/api/send-email`, {
@@ -228,24 +246,27 @@ export async function POST(req: Request) {
 
     const customerHTML = renderEmailHTML({
       kh: kh_short, customer_name, email, phone, ship,
-      address_line1, address_line2, city, state, postal_code, country, notes, items, isAdmin: false
+      address_line1, address_line2, city, state, postal_code, country, notes, items,
+      isAdmin: false
     });
     const adminHTML = renderEmailHTML({
       kh: kh_short, customer_name, email, phone, ship,
-      address_line1, address_line2, city, state, postal_code, country, notes, items, isAdmin: true
+      address_line1, address_line2, city, state, postal_code, country, notes, items,
+      isAdmin: true
     });
 
     const customerText = renderText(customer_name, kh_short, items, ship);
     const adminText    = `NEW ORDER — #${kh_short}\n${customer_name} placed an order. Items: ${itemsLine}`;
 
-    // Send to customer then admin
+    // fire both
     await send([email], `Your order is confirmed — #${kh_short}`, customerHTML, customerText, "customer");
     const adminTo = [process.env.ADMIN_NOTIFY_EMAIL || process.env.FROM_EMAIL].filter(Boolean) as string[];
     await send(adminTo, `NEW ORDER — #${kh_short}`, adminHTML, adminText, "admin");
 
-    return NextResponse.json({ ok: true, kh: kh_short, order_id: data.id }, { status: 200 });
+    return NextResponse.json({ ok: true, kh: kh_short, order_id: inserted.id }, { status: 200 });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e?.message || "Unknown error" }, { status: 500 });
   }
 }
+
 
