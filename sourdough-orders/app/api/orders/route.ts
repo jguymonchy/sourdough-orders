@@ -201,30 +201,44 @@ export async function POST(req: Request) {
     const seq = Number(seqData || 1);
     const kh_short = `KH${String(seq).padStart(3, "0")}`;
 
-    // Insert order WITH kh_short_id
-    const { data: inserted, error } = await supabase
-      .from("orders")
-      .insert({
-        kh_short_id: kh_short,
-        customer_name, email, phone,
-        ship,
-        order_type,
-        pickup_date: order_type === "pickup" ? batchDate : null,
-        ship_date:  order_type === "shipping" ? batchDate : null,
-        address_line1, address_line2, city, state, postal_code, country,
-        items, notes,
-        status: "open",
-        items_count,
-        items_list,
-        order_total,
-        batch_week_key: week_key
-      })
-      .select()
-      .single();
+  // Insert order WITH kh_short_id
+const { data: rows, error } = await supabase
+  .from("orders")
+  .insert({
+    kh_short_id: kh_short,
+    customer_name, email, phone,
+    ship,
+    order_type,
+    pickup_date: order_type === "pickup" ? batchDate : null,
+    ship_date:  order_type === "shipping" ? batchDate : null,
+    address_line1, address_line2, city, state, postal_code, country,
+    items, notes,
+    status: "open",
+    items_count,
+    items_list,
+    order_total,
+    batch_week_key: week_key
+  })
+  .select();
 
-    if (error) {
-      return NextResponse.json({ ok: false, error: `Supabase insert failed: ${error.message}` }, { status: 500 });
-    }
+if (error) {
+  return NextResponse.json({ ok: false, error: `Supabase insert failed: ${error.message}` }, { status: 500 });
+}
+
+// rows is an array; grab the first row
+const inserted = rows && rows[0];
+
+// --- Ensure kh_short_id is persisted on the stored row the webhook/Sheets will read
+try {
+  if (inserted && (!inserted.kh_short_id || inserted.kh_short_id !== kh_short)) {
+    await supabase
+      .from("orders")
+      .update({ kh_short_id: kh_short })
+      .eq("id", inserted.id);
+  }
+} catch (e) {
+  console.warn("[orders] failed to ensure kh_short_id on row", e);
+}
 
     // --- Ensure kh_short_id is persisted on the stored row the webhook/Sheets will read
     try {
