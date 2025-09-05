@@ -170,9 +170,8 @@ export async function POST(req: Request) {
     const order_type = ship ? "shipping" : "pickup";
 
     const items: Line[] = Array.isArray(raw.items) ? raw.items : [];
+    // We do NOT bind `rows` here to avoid name collision later
     const { items_list, items_count, order_total } = summarizeItems(items);
-// (we don't need the intermediate `rows` variable here)
-
 
     const pickup_date_s = first(raw.pickup_date);
     let batchDate: Date | null = fromYMD(pickup_date_s);
@@ -203,69 +202,40 @@ export async function POST(req: Request) {
     const seq = Number(seqData || 1);
     const kh_short = `KH${String(seq).padStart(3, "0")}`;
 
-// Insert order WITH kh_short_id
-const { data: insRows, error } = await supabase
-  .from("orders")
-  .insert({
-    kh_short_id: kh_short,
-    customer_name, email, phone,
-    ship,
-    order_type,
-    pickup_date: order_type === "pickup" ? batchDate : null,
-    ship_date:  order_type === "shipping" ? batchDate : null,
-    address_line1, address_line2, city, state, postal_code, country,
-    items, notes,
-    status: "open",
-    items_count,
-    items_list,
-    order_total,
-    batch_week_key: week_key
-  })
-  .select();
-
-if (error) {
-  return NextResponse.json({ ok: false, error: `Supabase insert failed: ${error.message}` }, { status: 500 });
-}
-
-// `insRows` is an array; grab the first row
-const inserted = insRows?.[0];
-
-// --- Ensure kh_short_id is persisted on the stored row the webhook/Sheets will read
-try {
-  if (inserted && (!inserted.kh_short_id || inserted.kh_short_id !== kh_short)) {
-    await supabase
+    // Insert order WITH kh_short_id
+    const { data: insRows, error } = await supabase
       .from("orders")
-      .update({ kh_short_id: kh_short })
-      .eq("id", inserted.id);
-  }
-} catch (e) {
-  console.warn("[orders] failed to ensure kh_short_id on row", e);
-}
+      .insert({
+        kh_short_id: kh_short,
+        customer_name, email, phone,
+        ship,
+        order_type,
+        pickup_date: order_type === "pickup" ? batchDate : null,
+        ship_date:  order_type === "shipping" ? batchDate : null,
+        address_line1, address_line2, city, state, postal_code, country,
+        items, notes,
+        status: "open",
+        items_count,
+        items_list,
+        order_total,
+        batch_week_key: week_key
+      })
+      .select();
 
+    if (error) {
+      return NextResponse.json({ ok: false, error: `Supabase insert failed: ${error.message}` }, { status: 500 });
+    }
 
-// rows is an array; grab the first row
-const inserted = rows && rows[0];
+    // `insRows` is an array; grab the first row
+    const insertedRow = insRows?.[0];
 
-// --- Ensure kh_short_id is persisted on the stored row the webhook/Sheets will read
-try {
-  if (inserted && (!inserted.kh_short_id || inserted.kh_short_id !== kh_short)) {
-    await supabase
-      .from("orders")
-      .update({ kh_short_id: kh_short })
-      .eq("id", inserted.id);
-  }
-} catch (e) {
-  console.warn("[orders] failed to ensure kh_short_id on row", e);
-}
-
-    // --- Ensure kh_short_id is persisted on the stored row the webhook/Sheets will read
+    // Ensure kh_short_id is persisted on the stored row the webhook/Sheets will read
     try {
-      const order = inserted!;
-      if (!order.kh_short_id || order.kh_short_id !== kh_short) {
+      if (insertedRow && (!insertedRow.kh_short_id || insertedRow.kh_short_id !== kh_short)) {
         await supabase
           .from("orders")
           .update({ kh_short_id: kh_short })
-          .eq("id", order.id);
+          .eq("id", insertedRow.id);
       }
     } catch (e) {
       console.warn("[orders] failed to ensure kh_short_id on row", e);
@@ -303,7 +273,7 @@ try {
     const adminTo = [process.env.ADMIN_NOTIFY_EMAIL || process.env.FROM_EMAIL].filter(Boolean) as string[];
     await send(adminTo, `NEW ORDER — #${kh_short}`, adminHTML, adminText, "admin");
 
-    return NextResponse.json({ ok: true, kh: kh_short, order_id: inserted!.id }, { status: 200 });
+    return NextResponse.json({ ok: true, kh: kh_short, order_id: insertedRow?.id }, { status: 200 });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e?.message || "Unknown error" }, { status: 500 });
   }
