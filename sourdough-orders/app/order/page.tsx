@@ -47,11 +47,14 @@ export default function OrderPage() {
   // --- Flavors pulled from the sheet ---
   const [flavors, setFlavors] = useState<Flavor[]>([]);
   useEffect(() => {
-    fetch(FLAVORS_CSV_URL)
-      .then((r) => r.text())
-      .then((t) => setFlavors(parseFlavorsCSV(t)))
-      .catch(() => setFlavors([]));
-  }, []);
+  // Force a fresh fetch every time (bust CDN & browser cache)
+  const u = new URL(FLAVORS_CSV_URL);
+  u.searchParams.set('ts', String(Date.now())); // cache-buster
+  fetch(u.toString(), { cache: 'no-store' })
+    .then((r) => r.text())
+    .then((t) => setFlavors(parseFlavorsCSV(t)))
+    .catch(() => setFlavors([]));
+}, []);
   const priceMap = useMemo<Record<string, number>>(
     () => Object.fromEntries(flavors.map(f => [f.name, f.price])),
     [flavors]
