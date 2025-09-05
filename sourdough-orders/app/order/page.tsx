@@ -3,19 +3,26 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 type ApiResponse = { ok: boolean; kh?: string; venmo_note?: string; error?: string };
+type Flavor = { name: string; price: number };
 
-const CATALOG = [
-  'Classic Sourdough',
-  'Jalapeño Cheddar',
-  'Cinnamon Raisin',
-  'Banana Pepper & Pepper Jack',
-  'Rosemary',
-  'Garlic',
-  'Seeded Country',
-  'Olive',
-];
+// 👉 Your published CSV (name,price) from the “Flavors” sheet:
+const FLAVORS_CSV_URL =
+  'https://docs.google.com/spreadsheets/d/e/2PACX-1vSwsTLwZpD-JCURv_-X4KtREOH1vFo2Ys9Me94io0Rq-MLcLcLvbeJb-ETrHbsa7p4FimwBNMMAsjlK/pub?gid=0&single=true&output=csv';
 
-const PRICE_EACH = 10;
+const PRICE_EACH = 10; // fallback if a flavor price is missing
+
+// Tiny CSV parser: uses last comma as the separator so names can contain commas
+function parseFlavorsCSV(text: string): Flavor[] {
+  const lines = text.trim().split(/\r?\n/);
+  if (lines.length <= 1) return [];
+  return lines.slice(1).map((line) => {
+    const parts = line.split(',');
+    const priceStr = parts.pop() ?? '';
+    const name = parts.join(',').replace(/^"|"$/g, '').trim();
+    const price = Number(String(priceStr).replace(/[^0-9.]/g, '')) || 0;
+    return { name, price };
+  }).filter(f => f.name);
+}
 
 export default function OrderPage() {
   const [submitting, setSubmitting] = useState(false);
@@ -37,9 +44,22 @@ export default function OrderPage() {
   const [items, setItems] = useState<Line[]>([]);
   const [picker, setPicker] = useState<string>('');
 
+  // --- Flavors pulled from the sheet ---
+  const [flavors, setFlavors] = useState<Flavor[]>([]);
+  useEffect(() => {
+    fetch(FLAVORS_CSV_URL)
+      .then((r) => r.text())
+      .then((t) => setFlavors(parseFlavorsCSV(t)))
+      .catch(() => setFlavors([]));
+  }, []);
+  const priceMap = useMemo<Record<string, number>>(
+    () => Object.fromEntries(flavors.map(f => [f.name, f.price])),
+    [flavors]
+  );
+
   const total = useMemo(
-    () => items.reduce((sum, i) => sum + (i.qty || 0) * PRICE_EACH, 0),
-    [items]
+    () => items.reduce((sum, i) => sum + (i.qty || 0) * (priceMap[i.name] ?? PRICE_EACH), 0),
+    [items, priceMap]
   );
 
   useEffect(() => {
@@ -158,7 +178,7 @@ export default function OrderPage() {
         name: line.name,
         item: line.name,
         qty: Number(line.qty || 0),
-        unit_price: PRICE_EACH,
+        unit_price: priceMap[line.name] ?? PRICE_EACH,
       }));
 
       // Payload with both canonical and alias fields (server normalizes)
@@ -344,9 +364,9 @@ export default function OrderPage() {
                   <option value="" disabled hidden>
                     — Select a Bread Flavor —
                   </option>
-                  {CATALOG.map((name) => (
-                    <option key={name} value={name}>
-                      {name}
+                  {flavors.map((f) => (
+                    <option key={f.name} value={f.name}>
+                      {f.name} — ${f.price.toFixed(2)}
                     </option>
                   ))}
                 </select>
@@ -443,5 +463,6 @@ export default function OrderPage() {
     </div>
   );
 }
+
 
 
