@@ -157,7 +157,7 @@ export async function POST(req: Request) {
   const raw = parsed.data;
 
   try {
-    // ——— Normalize inputs
+    // Normalize inputs
     const email = first(raw.email, raw.customerEmail, raw?.contact?.email) || "";
     if (!email) return NextResponse.json({ ok: false, error: "Missing email" }, { status: 400 });
 
@@ -181,7 +181,6 @@ export async function POST(req: Request) {
     const week_key = toYMD(batchDate!);
     const week_start = week_key;
 
-    // ——— Address & misc
     const address_line1 = first(raw.address_line1, raw.address1, raw.addressLine1, raw.street) || null;
     const address_line2 = first(raw.address_line2, raw.address2, raw.addressLine2, raw.apt, raw.unit, raw.suite) || null;
     const city = first(raw.city) || null;
@@ -191,10 +190,22 @@ export async function POST(req: Request) {
     const notes = first(raw.notes, raw.orderNotes, raw.comment) || null;
     const phone = first(raw.phone, raw?.contact?.phone) || null;
 
-    // ——— Insert base order
+    // 👉 Get KH### FIRST (so it's present in the inserted row that the webhook sees)
+    const { data: seqData, error: seqErr } = await supabase.rpc("next_kh_seq", {
+      p_week_key: week_key,
+      p_week_start: week_start,
+    });
+    if (seqErr) {
+      return NextResponse.json({ ok: false, error: `Counter RPC failed: ${seqErr.message}` }, { status: 500 });
+    }
+    const seq = Number(seqData || 1);
+    const kh_short = `KH${String(seq).padStart(3, "0")}`;
+
+    // Insert order WITH kh_short_id
     const { data: inserted, error } = await supabase
       .from("orders")
       .insert({
+        kh_short_id: kh_short,
         customer_name, email, phone,
         ship,
         order_type,
@@ -215,23 +226,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: `Supabase insert failed: ${error.message}` }, { status: 500 });
     }
 
-    // ——— Get KH### for the week
-    const { data: seqData, error: seqErr } = await supabase.rpc("next_kh_seq", {
-      p_week_key: week_key,
-      p_week_start: week_start,
-    });
-    if (seqErr) {
-      return NextResponse.json({ ok: false, error: `Counter RPC failed: ${seqErr.message}` }, { status: 500 });
-    }
-    const seq = Number(seqData || 1);
-    const kh_short = `KH${String(seq).padStart(3, "0")}`;
-
-    // Update row with KH id so Sheets can read it
-    await supabase.from("orders").update({ kh_short_id: kh_short }).eq("id", inserted.id);
-
-    // ——— Emails
+    // Emails
     const origin = new URL(req.url).origin;
-    const itemsLine = rows.map((r) => `${r.qty}× ${r.name}`).join(", ");
 
     async function send(to: string[], subject: string, html: string, text: string, tag: string) {
       const resp = await fetch(`${origin}/api/send-email`, {
@@ -256,9 +252,8 @@ export async function POST(req: Request) {
     });
 
     const customerText = renderText(customer_name, kh_short, items, ship);
-    const adminText    = `NEW ORDER — #${kh_short}\n${customer_name} placed an order. Items: ${itemsLine}`;
+    const adminText    = renderText(customer_name, kh_short, items, ship);
 
-    // fire both
     await send([email], `Your order is confirmed — #${kh_short}`, customerHTML, customerText, "customer");
     const adminTo = [process.env.ADMIN_NOTIFY_EMAIL || process.env.FROM_EMAIL].filter(Boolean) as string[];
     await send(adminTo, `NEW ORDER — #${kh_short}`, adminHTML, adminText, "admin");
@@ -268,5 +263,4 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: e?.message || "Unknown error" }, { status: 500 });
   }
 }
-
 
