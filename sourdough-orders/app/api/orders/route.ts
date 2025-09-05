@@ -170,7 +170,9 @@ export async function POST(req: Request) {
     const order_type = ship ? "shipping" : "pickup";
 
     const items: Line[] = Array.isArray(raw.items) ? raw.items : [];
-    const { rows, items_list, items_count, order_total } = summarizeItems(items);
+    const { items_list, items_count, order_total } = summarizeItems(items);
+// (we don't need the intermediate `rows` variable here)
+
 
     const pickup_date_s = first(raw.pickup_date);
     let batchDate: Date | null = fromYMD(pickup_date_s);
@@ -201,8 +203,8 @@ export async function POST(req: Request) {
     const seq = Number(seqData || 1);
     const kh_short = `KH${String(seq).padStart(3, "0")}`;
 
-  // Insert order WITH kh_short_id
-const { data: rows, error } = await supabase
+// Insert order WITH kh_short_id
+const { data: insRows, error } = await supabase
   .from("orders")
   .insert({
     kh_short_id: kh_short,
@@ -224,6 +226,22 @@ const { data: rows, error } = await supabase
 if (error) {
   return NextResponse.json({ ok: false, error: `Supabase insert failed: ${error.message}` }, { status: 500 });
 }
+
+// `insRows` is an array; grab the first row
+const inserted = insRows?.[0];
+
+// --- Ensure kh_short_id is persisted on the stored row the webhook/Sheets will read
+try {
+  if (inserted && (!inserted.kh_short_id || inserted.kh_short_id !== kh_short)) {
+    await supabase
+      .from("orders")
+      .update({ kh_short_id: kh_short })
+      .eq("id", inserted.id);
+  }
+} catch (e) {
+  console.warn("[orders] failed to ensure kh_short_id on row", e);
+}
+
 
 // rows is an array; grab the first row
 const inserted = rows && rows[0];
