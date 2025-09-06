@@ -389,7 +389,59 @@ export default function OrderPage() {
 
               {/* Total + Submit */}
               <div style={{ marginTop: 6, color: '#333' }}>
-                <b>Estimated total:</b>
+                <b>Estimated total:</b> ${total}
+                <div style={{ fontSize: 12, color: '#666' }}>(final total computed server-side)</div>
+              </div>
 
+              <button type="submit" disabled={submitting} className="primary" style={{ marginTop: 12 }}>
+                {submitting ? 'Placing order…' : 'Place Order'}
+              </button>
+
+              {message && (
+                <div style={{ marginTop: 10, padding: 10, background: '#f6f6f6', borderRadius: 10 }}>
+                  {kh ? (
+                    <div>
+                      <div style={{ fontWeight: 700 }}>{message}</div>
+                      <div>Venmo note: “{venmoNote}”</div>
+
+                      {/* Venmo block */}
+                      <div style={{ marginTop: 12, padding: 12, border: '1px solid #eee', borderRadius: 10 }}>
+                        <div style={{ fontWeight: 700, marginBottom: 6 }}>Pay with Venmo</div>
+                        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+                          <a href={venmoDeepLink}
+                            style={{ padding: '10px 12px', borderRadius: 10, background: '#3d95ce', color: '#fff', textDecoration: 'none', fontWeight: 600 }}>
+                            Open Venmo & Pay ${lastTotal}
+                          </a>
+                          <a href={venmoWebLink} target="_blank" rel="noopener noreferrer"
+                            style={{ textDecoration: 'underline', color: '#333' }}>
+                            Or open your Venmo profile
+                          </a>
+                          <button type="button"
+                            onClick={() => setMessage('👍 No problem — you can pay within 24 hours.')}
+                            style={{ appearance: 'none', border: '1px solid #ccc', background: '#fff', color: '#333', padding: '10px 12px', borderRadius: 10, cursor: 'pointer' }}>
+                            Pay later
+                          </button>
+                        </div>
+                        <div style={{ marginTop: 8, color: '#555', fontSize: 13 }}>
+                          Please include <b>{kh}</b> in your Venmo note. Pay within <b>24 hours</b> or your order may be cancelled.
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    message
+                  )}
+                </div>
+              )}
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <div style={{ marginTop: 14, fontSize: 12, color: '#777', textAlign: 'center' }}>
+        Pickup is Saturdays at Festival City Farmers Market (Cedar City). Shipping runs Fridays (US only).
+      </div>
+    </div>
+  );
+}
 
 
