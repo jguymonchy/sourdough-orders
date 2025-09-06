@@ -8,7 +8,7 @@ type Flavor = { name: string; price: number };
 const FLAVORS_CSV_URL =
   'https://docs.google.com/spreadsheets/d/e/2PACX-1vSwsTLwZpD-JCURv_-X4KtREOH1vFo2Ys9Me94io0Rq-MLcLcLvbeJb-ETrHbsa7p4FimwBNMMAsjlK/pub?gid=0&single=true&output=csv';
 
-const PRICE_EACH = 10; // fallback if flavor price missing
+const PRICE_EACH = 10;
 const VENMO_USERNAME = 'John-T-Guymon';
 
 function parseFlavorsCSV(text: string): Flavor[] {
@@ -52,7 +52,6 @@ export default function OrderPage() {
     return () => document.body.classList.remove('khh-hide-header');
   }, []);
 
-  // Fulfillment + date helpers
   const [method, setMethod] = useState<'pickup' | 'shipping'>('pickup');
   const [dateHint, setDateHint] = useState<string>('');
   const dateRef = useRef<HTMLInputElement | null>(null);
@@ -61,11 +60,10 @@ export default function OrderPage() {
   const [items, setItems] = useState<Line[]>([]);
   const [picker, setPicker] = useState<string>('');
 
-  // Flavors from sheet
   const [flavors, setFlavors] = useState<Flavor[]>([]);
   useEffect(() => {
     const u = new URL(FLAVORS_CSV_URL);
-    u.searchParams.set('ts', String(Date.now())); // cache-buster
+    u.searchParams.set('ts', String(Date.now()));
     fetch(u.toString(), { cache: 'no-store' })
       .then((r) => r.text())
       .then((t) => setFlavors(parseFlavorsCSV(t)))
@@ -81,9 +79,10 @@ export default function OrderPage() {
     [items, priceMap]
   );
 
+  // auto-hide popup after 15s
   useEffect(() => {
     if (message) {
-      const t = setTimeout(() => setMessage(null), 4000);
+      const t = setTimeout(() => setMessage(null), 15000);
       return () => clearTimeout(t);
     }
   }, [message]);
@@ -107,7 +106,7 @@ export default function OrderPage() {
     return d;
   }
   function allowedDowFor(m: 'pickup' | 'shipping') {
-    return m === 'pickup' ? 6 : 5; // Sat/Fri
+    return m === 'pickup' ? 6 : 5;
   }
   function ruleText(m: 'pickup' | 'shipping') {
     return m === 'pickup'
@@ -173,8 +172,6 @@ export default function OrderPage() {
 
     try {
       const fd = new FormData(e.currentTarget);
-
-      // For pickup, clear address fields
       const addressDisabled = method !== 'shipping';
       if (addressDisabled) {
         fd.set('address1', '');
@@ -186,7 +183,6 @@ export default function OrderPage() {
 
       if (dateRef.current) validateOrSnapDate(dateRef.current);
 
-      // Build items array
       const filtered = items.filter((i) => (i.qty || 0) > 0);
       const itemsArray = filtered.map((line) => ({
         sku: slugify(line.name),
@@ -211,7 +207,6 @@ export default function OrderPage() {
         notes: String(fd.get('notes') || ''),
         items: itemsArray,
         status: 'open',
-        // aliases
         customerName: String(fd.get('name') || ''),
         customerEmail: String(fd.get('email') || ''),
         ship: method === 'shipping',
@@ -398,7 +393,16 @@ export default function OrderPage() {
               </button>
 
               {message && (
-                <div style={{ marginTop: 10, padding: 10, background: '#f6f6f6', borderRadius: 10 }}>
+                <div style={{ marginTop: 10, padding: 10, background: '#f6f6f6', borderRadius: 10, position: 'relative' }}>
+                  {/* Close button */}
+                  <button
+                    onClick={() => setMessage(null)}
+                    style={{ position: 'absolute', top: 6, right: 8, border: 'none', background: 'transparent', fontSize: 16, cursor: 'pointer', color: '#555' }}
+                    aria-label="Close"
+                  >
+                    ×
+                  </button>
+
                   {kh ? (
                     <div>
                       <div style={{ fontWeight: 700 }}>{message}</div>
