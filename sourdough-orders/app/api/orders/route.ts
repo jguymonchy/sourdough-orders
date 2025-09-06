@@ -63,11 +63,11 @@ function renderEmailHTML(opts: {
   kh: string; customer_name: string; email: string; phone?: string | null;
   ship: boolean; address_line1?: string | null; address_line2?: string | null;
   city?: string | null; state?: string | null; postal_code?: string | null; country?: string | null;
-  notes?: string | null; items: Line[]; isAdmin: boolean;
+  notes?: string | null; items: Line[]; isAdmin: boolean; origin?: string;
 }) {
   const {
     kh, customer_name, email, phone, ship, address_line1, address_line2, city, state, postal_code,
-    country = "USA", notes, items, isAdmin
+    country = "USA", notes, items, isAdmin, origin = ""
   } = opts;
 
   const { rows, order_total } = summarizeItems(items);
@@ -83,6 +83,22 @@ function renderEmailHTML(opts: {
   const headline = isAdmin ? "NEW ORDER received" : "Thanks for your order!";
   const preface  = isAdmin ? `Order # ${kh}` : `Your order is confirmed — #${kh}`;
   const noteBlock = notes ? `<h3 style="margin:24px 0 8px;font-size:16px">Notes</h3><p style="margin:0">${esc(notes)}</p>` : "";
+
+  // --- Payment section for customers ---
+  const payBlock = !isAdmin ? `
+    <h3 style="margin:24px 0 8px;font-size:16px">Payment</h3>
+    <p style="margin:0 0 8px">Please pay within <b>24 hours</b> via Venmo. Include your order ID <b>#${kh}</b> in the note.</p>
+    <p style="margin:0 0 8px">
+      <a href="venmo://paycharge?txn=pay&recipients=${encodeURIComponent("John-T-Guymon")}&amount=${order_total}&note=${encodeURIComponent(kh + " — Kanarra Heights Homestead")}"
+         style="color:#3d95ce;text-decoration:underline">Open Venmo (app)</a>
+      &nbsp;•&nbsp;
+      <a href="https://account.venmo.com/u/John-T-Guymon" target="_blank" rel="noopener"
+         style="color:#3d95ce;text-decoration:underline">Open Venmo on the web</a>
+    </p>
+    <p style="margin:12px 0 0">
+      <img src="${origin}/venmo-qr.png" alt="Venmo QR Code" style="max-width:180px;height:auto;border:1px solid #ccc;border-radius:8px;padding:4px" />
+    </p>
+  ` : "";
 
   return `<!doctype html><html><body style="margin:0;padding:0;background:#f6f6f6;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
   <table role="presentation" cellpadding="0" cellspacing="0" width="100%"><tr><td align="center" style="padding:24px">
@@ -129,9 +145,10 @@ function renderEmailHTML(opts: {
         </tbody>
       </table>
       ${noteBlock}
+      ${payBlock}
       ${isAdmin
         ? `<p style="color:#999;font-size:12px;margin-top:20px">This notification was sent to ADMIN_NOTIFY_EMAIL.</p>`
-        : `<p style="color:#444;font-size:13px;margin-top:20px">Reply if you have questions. For Venmo, include your order ID <b>#${kh}</b>.</p>`}
+        : `<p style="color:#444;font-size:13px;margin-top:20px">Reply if you have questions.</p>`}
     </td></tr>
     <tr><td style="padding:16px 24px;border-top:1px solid #eee;color:#888;font-size:12px">— Kanarra Heights Homestead</td></tr>
   </table>
@@ -157,7 +174,6 @@ export async function POST(req: Request) {
   const raw = parsed.data;
 
   try {
-    // Normalize inputs
     const email = first(raw.email, raw.customerEmail, raw?.contact?.email) || "";
     if (!email) return NextResponse.json({ ok: false, error: "Missing email" }, { status: 400 });
 
@@ -170,13 +186,12 @@ export async function POST(req: Request) {
     const order_type = ship ? "shipping" : "pickup";
 
     const items: Line[] = Array.isArray(raw.items) ? raw.items : [];
-    // We do NOT bind `rows` here to avoid name collision later
     const { items_list, items_count, order_total } = summarizeItems(items);
 
     const pickup_date_s = first(raw.pickup_date);
     let batchDate: Date | null = fromYMD(pickup_date_s);
     if (!batchDate) {
-      const targetDow = ship ? 5 /* Fri */ : 6 /* Sat */;
+      const targetDow = ship ? 5 : 6;
       batchDate = nextDowFrom(new Date(), targetDow);
     }
     const week_key = toYMD(batchDate!);
@@ -191,7 +206,6 @@ export async function POST(req: Request) {
     const notes = first(raw.notes, raw.orderNotes, raw.comment) || null;
     const phone = first(raw.phone, raw?.contact?.phone) || null;
 
-    // Get KH### FIRST (so it's present in the inserted row that the webhook sees)
     const { data: seqData, error: seqErr } = await supabase.rpc("next_kh_seq", {
       p_week_key: week_key,
       p_week_start: week_start,
@@ -202,7 +216,6 @@ export async function POST(req: Request) {
     const seq = Number(seqData || 1);
     const kh_short = `KH${String(seq).padStart(3, "0")}`;
 
-    // Insert order WITH kh_short_id
     const { data: insRows, error } = await supabase
       .from("orders")
       .insert({
@@ -226,10 +239,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: `Supabase insert failed: ${error.message}` }, { status: 500 });
     }
 
-    // `insRows` is an array; grab the first row
     const insertedRow = insRows?.[0];
-
-    // Ensure kh_short_id is persisted on the stored row the webhook/Sheets will read
     try {
       if (insertedRow && (!insertedRow.kh_short_id || insertedRow.kh_short_id !== kh_short)) {
         await supabase
@@ -241,7 +251,6 @@ export async function POST(req: Request) {
       console.warn("[orders] failed to ensure kh_short_id on row", e);
     }
 
-    // Emails
     const origin = new URL(req.url).origin;
 
     async function send(to: string[], subject: string, html: string, text: string, tag: string) {
@@ -258,12 +267,12 @@ export async function POST(req: Request) {
     const customerHTML = renderEmailHTML({
       kh: kh_short, customer_name, email, phone, ship,
       address_line1, address_line2, city, state, postal_code, country, notes, items,
-      isAdmin: false
+      isAdmin: false, origin
     });
     const adminHTML = renderEmailHTML({
       kh: kh_short, customer_name, email, phone, ship,
       address_line1, address_line2, city, state, postal_code, country, notes, items,
-      isAdmin: true
+      isAdmin: true, origin
     });
 
     const customerText = renderText(customer_name, kh_short, items, ship);
