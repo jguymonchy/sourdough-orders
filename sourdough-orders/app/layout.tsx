@@ -9,6 +9,11 @@ export const metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
+      <head>
+        {/* Force browsers to always pull the latest manifest */}
+        <link rel="manifest" href="/manifest.webmanifest?v=2025-09-05" />
+        <meta name="theme-color" content="#111111" />
+      </head>
       <body>
         {/* Global header always renders (we'll hide it on /order from the page) */}
         <header className="khh-header">
