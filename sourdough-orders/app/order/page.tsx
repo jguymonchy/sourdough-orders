@@ -40,6 +40,47 @@ function buildVenmoDeepLink(user: string, amount: number, note: string) {
   return `${base}?${params.toString()}`;
 }
 
+// ---------- Date helpers ----------
+function toYMD(d: Date) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+function fromYMD(ymd: string) {
+  const [y, m, d] = ymd.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+function nextDowFrom(from: Date, targetDow: number) {
+  const d = new Date(from);
+  d.setHours(0, 0, 0, 0);
+  do d.setDate(d.getDate() + 1);
+  while (d.getDay() !== targetDow);
+  return d;
+}
+
+// Pickup cutoff logic:
+// - Before Thu 10:00 AM → use THIS Saturday
+// - Thu 10:00 AM or later (including Fri/Sat) → use NEXT Saturday
+function nextPickupSaturdayConsideringCutoff(now: Date) {
+  const dow = now.getDay(); // 0=Sun ... 6=Sat
+  const hour = now.getHours();
+
+  // upcoming Saturday from "now"
+  const thisSaturday = nextDowFrom(now, 6);
+
+  const cutoffPassed =
+    dow > 4 /* Fri(5) or Sat(6) */ ||
+    (dow === 4 && hour >= 10); /* Thu at/after 10:00 */
+
+  if (cutoffPassed) {
+    const nextSat = new Date(thisSaturday);
+    nextSat.setDate(thisSaturday.getDate() + 7);
+    return nextSat;
+  }
+  return thisSaturday;
+}
+
 export default function OrderPage() {
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -60,10 +101,11 @@ export default function OrderPage() {
   const [items, setItems] = useState<Line[]>([]);
   const [picker, setPicker] = useState<string>('');
 
+  // Flavors from sheet
   const [flavors, setFlavors] = useState<Flavor[]>([]);
   useEffect(() => {
     const u = new URL(FLAVORS_CSV_URL);
-    u.searchParams.set('ts', String(Date.now()));
+    u.searchParams.set('ts', String(Date.now())); // cache-buster
     fetch(u.toString(), { cache: 'no-store' })
       .then((r) => r.text())
       .then((t) => setFlavors(parseFlavorsCSV(t)))
@@ -87,40 +129,27 @@ export default function OrderPage() {
     }
   }, [message]);
 
-  // ---- Date helpers ----
-  function toYMD(d: Date) {
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${y}-${m}-${day}`;
-  }
-  function fromYMD(ymd: string) {
-    const [y, m, d] = ymd.split('-').map(Number);
-    return new Date(y, m - 1, d);
-  }
-  function nextDowFrom(from: Date, targetDow: number) {
-    const d = new Date(from);
-    d.setHours(0, 0, 0, 0);
-    do d.setDate(d.getDate() + 1);
-    while (d.getDay() !== targetDow);
-    return d;
-  }
-  function allowedDowFor(m: 'pickup' | 'shipping') {
-    return m === 'pickup' ? 6 : 5;
-  }
   function ruleText(m: 'pickup' | 'shipping') {
-    return m === 'pickup'
-      ? 'Pickup is Saturdays at Festival City Farmers Market (Cedar City).'
-      : 'Shipping goes out on Fridays (US only).';
+    if (m === 'pickup') {
+      return 'Pickup is Saturdays at Festival City Farmers Market (Cedar City). After Thu 10:00 AM, pickup moves to the following Saturday.';
+    }
+    return 'Shipping goes out on Fridays (US only).';
   }
 
+  // Initialize/snap date whenever method changes
   useEffect(() => {
     const el = dateRef.current;
-    const allowed = allowedDowFor(method);
     setDateHint(ruleText(method));
-    if (el) {
-      const snap = nextDowFrom(new Date(), allowed);
-      el.value = toYMD(snap);
+    if (!el) return;
+
+    if (method === 'pickup') {
+      const next = nextPickupSaturdayConsideringCutoff(new Date());
+      el.value = toYMD(next);
+      el.setCustomValidity('');
+    } else {
+      // (Shipping disabled for now, but keep logic future-proof)
+      const fri = nextDowFrom(new Date(), 5);
+      el.value = toYMD(fri);
       el.setCustomValidity('');
     }
   }, [method]);
@@ -129,17 +158,33 @@ export default function OrderPage() {
     if (!el.value) return;
     try {
       const picked = fromYMD(el.value);
-      const allowed = allowedDowFor(method);
-      if (picked.getDay() !== allowed) {
-        const snapped = nextDowFrom(picked, allowed);
-        el.value = toYMD(snapped);
-        setDateHint(
-          method === 'pickup'
-            ? 'Pickup is Saturdays — date adjusted to the next Saturday.'
-            : 'Shipping is Fridays — date adjusted to the next Friday.'
-        );
+
+      if (method === 'pickup') {
+        const ideal = nextPickupSaturdayConsideringCutoff(new Date());
+        // If not Saturday OR not the allowed one (e.g., too-late Saturday), snap to ideal
+        const pickedIsSaturday = picked.getDay() === 6;
+        const sameDay =
+          picked.getFullYear() === ideal.getFullYear() &&
+          picked.getMonth() === ideal.getMonth() &&
+          picked.getDate() === ideal.getDate();
+
+        if (!pickedIsSaturday || !sameDay) {
+          el.value = toYMD(ideal);
+          setDateHint('Pickup is Saturdays — date adjusted based on the Thu 10:00 AM cutoff.');
+        } else {
+          setDateHint(ruleText('pickup'));
+        }
+        el.setCustomValidity('');
+        return;
+      }
+
+      // Shipping path (disabled in UI, but keep validation tidy)
+      if (picked.getDay() !== 5) {
+        const fri = nextDowFrom(picked, 5);
+        el.value = toYMD(fri);
+        setDateHint('Shipping is Fridays — date adjusted to the next Friday.');
       } else {
-        setDateHint(ruleText(method));
+        setDateHint(ruleText('shipping'));
       }
       el.setCustomValidity('');
     } catch {
@@ -172,6 +217,8 @@ export default function OrderPage() {
 
     try {
       const fd = new FormData(e.currentTarget);
+
+      // For pickup, clear address fields
       const addressDisabled = method !== 'shipping';
       if (addressDisabled) {
         fd.set('address1', '');
@@ -207,6 +254,7 @@ export default function OrderPage() {
         notes: String(fd.get('notes') || ''),
         items: itemsArray,
         status: 'open',
+        // aliases
         customerName: String(fd.get('name') || ''),
         customerEmail: String(fd.get('email') || ''),
         ship: method === 'shipping',
@@ -285,30 +333,50 @@ export default function OrderPage() {
                 <div style={{ fontWeight: 700, marginBottom: 6 }}>Fulfillment</div>
                 <div style={{ display: 'flex', alignItems: 'baseline', flexWrap: 'wrap', gap: 16 }}>
                   <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                    <input type="radio" name="fulfillment_method" value="pickup"
-                      checked={method === 'pickup'} onChange={() => setMethod('pickup')} />
+                    <input
+                      type="radio"
+                      name="fulfillment_method"
+                      value="pickup"
+                      checked={method === 'pickup'}
+                      onChange={() => setMethod('pickup')}
+                    />
                     <span>Pickup</span>
                   </label>
-                  <span style={{ color: '#666', fontSize: 12 }}>Festival City Farmers Market, Cedar City</span>
-                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                    <input type="radio" name="fulfillment_method" value="shipping"
-                      checked={method === 'shipping'} onChange={() => setMethod('shipping')} />
-                    <span>Shipping</span>
+                  <span style={{ color: '#666', fontSize: 12 }}>
+                    Festival City Farmers Market, Cedar City
+                  </span>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, opacity: 0.6 }}>
+                    <input
+                      type="radio"
+                      name="fulfillment_method"
+                      value="shipping"
+                      disabled
+                      checked={false}
+                      onChange={() => {}}
+                    />
+                    <span>Shipping (coming soon)</span>
                   </label>
-                  <span style={{ color: '#666', fontSize: 12 }}>US only</span>
                 </div>
               </div>
 
               {/* Date */}
               <div>
                 <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>Date</label>
-                <input ref={dateRef} name="pickup_date" type="date"
-                  onBlur={(e) => validateOrSnapDate(e.currentTarget)} />
-                <div style={{ marginTop: 6, color: '#666', fontSize: 12 }}>{dateHint || ruleText(method)}</div>
+                <input
+                  ref={dateRef}
+                  name="pickup_date"
+                  type="date"
+                  onBlur={(e) => validateOrSnapDate(e.currentTarget)}
+                />
+                <div style={{ marginTop: 6, color: '#666', fontSize: 12 }}>
+                  {dateHint || ruleText(method)}
+                </div>
               </div>
 
               {/* Address (Shipping only) */}
-              <div style={{ marginTop: 6, fontWeight: 700, fontSize: 15 }}>Shipping Address (only if “Shipping”)</div>
+              <div style={{ marginTop: 6, fontWeight: 700, fontSize: 15 }}>
+                Shipping Address (only if “Shipping”)
+              </div>
               <div>
                 <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>Address line 1</label>
                 <input name="address1" disabled={addressDisabled} required={!addressDisabled} />
@@ -358,22 +426,54 @@ export default function OrderPage() {
 
               {items.length > 0 && (
                 <div style={{ border: '1px solid #eee', borderRadius: 10 }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px 80px', padding: '8px 10px', borderBottom: '1px solid #eee', fontWeight: 600 }}>
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '1fr 120px 80px',
+                      padding: '8px 10px',
+                      borderBottom: '1px solid #eee',
+                      fontWeight: 600,
+                    }}
+                  >
                     <div>Item</div>
                     <div style={{ textAlign: 'right' }}>Qty</div>
                     <div />
                   </div>
                   {items.map((line, idx) => (
-                    <div key={`${line.name}-${idx}`} style={{ display: 'grid', gridTemplateColumns: '1fr 120px 80px', padding: '8px 10px', alignItems: 'center', borderBottom: idx < items.length - 1 ? '1px solid #f3f3f3' : 'none' }}>
+                    <div
+                      key={`${line.name}-${idx}`}
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '1fr 120px 80px',
+                        padding: '8px 10px',
+                        alignItems: 'center',
+                        borderBottom: idx < items.length - 1 ? '1px solid #f3f3f3' : 'none',
+                      }}
+                    >
                       <div>{line.name}</div>
                       <div style={{ textAlign: 'right' }}>
-                        <input type="number" min={0} value={line.qty}
+                        <input
+                          type="number"
+                          min={0}
+                          value={line.qty}
                           onChange={(e) => setQty(idx, Math.max(0, Number(e.target.value || 0)))}
-                          style={{ width: 100, textAlign: 'right' }} />
+                          style={{ width: 100, textAlign: 'right' }}
+                        />
                       </div>
                       <div>
-                        <button type="button" onClick={() => removeItem(idx)}
-                          style={{ appearance: 'none', border: 'none', background: '#eee', color: '#333', padding: '10px 12px', borderRadius: 10, cursor: 'pointer' }}>
+                        <button
+                          type="button"
+                          onClick={() => removeItem(idx)}
+                          style={{
+                            appearance: 'none',
+                            border: 'none',
+                            background: '#eee',
+                            color: '#333',
+                            padding: '10px 12px',
+                            borderRadius: 10,
+                            cursor: 'pointer',
+                          }}
+                        >
                           Remove
                         </button>
                       </div>
@@ -412,17 +512,25 @@ export default function OrderPage() {
                       <div style={{ marginTop: 12, padding: 12, border: '1px solid #eee', borderRadius: 10 }}>
                         <div style={{ fontWeight: 700, marginBottom: 6 }}>Pay with Venmo</div>
                         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-                          <a href={venmoDeepLink}
-                            style={{ padding: '10px 12px', borderRadius: 10, background: '#3d95ce', color: '#fff', textDecoration: 'none', fontWeight: 600 }}>
+                          <a
+                            href={venmoDeepLink}
+                            style={{ padding: '10px 12px', borderRadius: 10, background: '#3d95ce', color: '#fff', textDecoration: 'none', fontWeight: 600 }}
+                          >
                             Open Venmo & Pay ${lastTotal}
                           </a>
-                          <a href={venmoWebLink} target="_blank" rel="noopener noreferrer"
-                            style={{ textDecoration: 'underline', color: '#333' }}>
+                          <a
+                            href={venmoWebLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ textDecoration: 'underline', color: '#333' }}
+                          >
                             Or open your Venmo profile
                           </a>
-                          <button type="button"
+                          <button
+                            type="button"
                             onClick={() => setMessage('👍 No problem — you can pay within 24 hours.')}
-                            style={{ appearance: 'none', border: '1px solid #ccc', background: '#fff', color: '#333', padding: '10px 12px', borderRadius: 10, cursor: 'pointer' }}>
+                            style={{ appearance: 'none', border: '1px solid #ccc', background: '#fff', color: '#333', padding: '10px 12px', borderRadius: 10, cursor: 'pointer' }}
+                          >
                             Pay later
                           </button>
                         </div>
