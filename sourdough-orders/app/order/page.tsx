@@ -56,6 +56,7 @@ function startOfDay(d: Date) {
   x.setHours(0, 0, 0, 0);
   return x;
 }
+// Strictly-next DOW (always moves forward at least 1 day)
 function nextDowFrom(from: Date, targetDow: number) {
   const d = new Date(from);
   d.setHours(0, 0, 0, 0);
@@ -63,21 +64,28 @@ function nextDowFrom(from: Date, targetDow: number) {
   while (d.getDay() !== targetDow);
   return d;
 }
+// Next-or-same DOW (today counts if it matches)
+function nextOrSameDowFrom(from: Date, targetDow: number) {
+  const d = new Date(from);
+  d.setHours(0, 0, 0, 0);
+  while (d.getDay() !== targetDow) d.setDate(d.getDate() + 1);
+  return d;
+}
 
 // Pickup cutoff logic:
-// - Before Thu 10:00 AM → earliest allowed = THIS Saturday
+// - Before Thu 10:00 AM → earliest allowed = THIS Saturday (today counts if Saturday)
 // - Thu 10:00 AM or later (including Fri/Sat) → earliest allowed = NEXT Saturday
 function nextPickupSaturdayConsideringCutoff(now: Date) {
   const dow = now.getDay(); // 0=Sun ... 6=Sat
   const hour = now.getHours();
-  const thisSaturday = nextDowFrom(now, 6);
+  const thisOrSameSaturday = nextOrSameDowFrom(now, 6);
   const cutoffPassed = dow > 4 /* Fri(5) or Sat(6) */ || (dow === 4 && hour >= 10); /* Thu >=10:00 */
   if (cutoffPassed) {
-    const nextSat = new Date(thisSaturday);
-    nextSat.setDate(thisSaturday.getDate() + 7);
+    const nextSat = new Date(thisOrSameSaturday);
+    nextSat.setDate(thisOrSameSaturday.getDate() + 7);
     return nextSat;
   }
-  return thisSaturday;
+  return thisOrSameSaturday;
 }
 
 export default function OrderPage() {
@@ -147,7 +155,7 @@ export default function OrderPage() {
       el.min = toYMD(minSat); // prevent earlier dates
       el.setCustomValidity('');
     } else {
-      const fri = startOfDay(nextDowFrom(new Date(), 5));
+      const fri = startOfDay(nextOrSameDowFrom(new Date(), 5));
       el.value = toYMD(fri);
       el.min = toYMD(fri);
       el.setCustomValidity('');
@@ -560,5 +568,3 @@ export default function OrderPage() {
     </div>
   );
 }
-
-
