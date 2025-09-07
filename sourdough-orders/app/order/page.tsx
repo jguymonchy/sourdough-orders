@@ -51,6 +51,11 @@ function fromYMD(ymd: string) {
   const [y, m, d] = ymd.split('-').map(Number);
   return new Date(y, m - 1, d);
 }
+function startOfDay(d: Date) {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
 function nextDowFrom(from: Date, targetDow: number) {
   const d = new Date(from);
   d.setHours(0, 0, 0, 0);
@@ -60,19 +65,13 @@ function nextDowFrom(from: Date, targetDow: number) {
 }
 
 // Pickup cutoff logic:
-// - Before Thu 10:00 AM → use THIS Saturday
-// - Thu 10:00 AM or later (including Fri/Sat) → use NEXT Saturday
+// - Before Thu 10:00 AM → earliest allowed = THIS Saturday
+// - Thu 10:00 AM or later (including Fri/Sat) → earliest allowed = NEXT Saturday
 function nextPickupSaturdayConsideringCutoff(now: Date) {
   const dow = now.getDay(); // 0=Sun ... 6=Sat
   const hour = now.getHours();
-
-  // upcoming Saturday from "now"
   const thisSaturday = nextDowFrom(now, 6);
-
-  const cutoffPassed =
-    dow > 4 /* Fri(5) or Sat(6) */ ||
-    (dow === 4 && hour >= 10); /* Thu at/after 10:00 */
-
+  const cutoffPassed = dow > 4 /* Fri(5) or Sat(6) */ || (dow === 4 && hour >= 10); /* Thu >=10:00 */
   if (cutoffPassed) {
     const nextSat = new Date(thisSaturday);
     nextSat.setDate(thisSaturday.getDate() + 7);
@@ -136,20 +135,21 @@ export default function OrderPage() {
     return 'Shipping goes out on Fridays (US only).';
   }
 
-  // Initialize/snap date whenever method changes
+  // Initialize default date and set <input min> whenever method changes
   useEffect(() => {
     const el = dateRef.current;
     setDateHint(ruleText(method));
     if (!el) return;
 
     if (method === 'pickup') {
-      const next = nextPickupSaturdayConsideringCutoff(new Date());
-      el.value = toYMD(next);
+      const minSat = startOfDay(nextPickupSaturdayConsideringCutoff(new Date()));
+      el.value = toYMD(minSat);
+      el.min = toYMD(minSat); // prevent earlier dates
       el.setCustomValidity('');
     } else {
-      // (Shipping disabled for now, but keep logic future-proof)
-      const fri = nextDowFrom(new Date(), 5);
+      const fri = startOfDay(nextDowFrom(new Date(), 5));
       el.value = toYMD(fri);
+      el.min = toYMD(fri);
       el.setCustomValidity('');
     }
   }, [method]);
@@ -157,30 +157,35 @@ export default function OrderPage() {
   function validateOrSnapDate(el: HTMLInputElement) {
     if (!el.value) return;
     try {
-      const picked = fromYMD(el.value);
+      const picked = startOfDay(fromYMD(el.value));
 
       if (method === 'pickup') {
-        const ideal = nextPickupSaturdayConsideringCutoff(new Date());
-        // If not Saturday OR not the allowed one (e.g., too-late Saturday), snap to ideal
-        const pickedIsSaturday = picked.getDay() === 6;
-        const sameDay =
-          picked.getFullYear() === ideal.getFullYear() &&
-          picked.getMonth() === ideal.getMonth() &&
-          picked.getDate() === ideal.getDate();
+        const minSat = startOfDay(nextPickupSaturdayConsideringCutoff(new Date()));
 
-        if (!pickedIsSaturday || !sameDay) {
-          el.value = toYMD(ideal);
-          setDateHint('Pickup is Saturdays — date adjusted based on the Thu 10:00 AM cutoff.');
+        // Too early? lock to earliest allowed Saturday
+        if (picked < minSat) {
+          el.value = toYMD(minSat);
+          setDateHint('Pickup date adjusted to the earliest available Saturday based on the Thu 10:00 AM cutoff.');
+          el.setCustomValidity('');
+          return;
+        }
+
+        // Not a Saturday? snap forward to the next Saturday from that picked date
+        if (picked.getDay() !== 6) {
+          const nextSat = startOfDay(nextDowFrom(picked, 6));
+          el.value = toYMD(nextSat);
+          setDateHint('Pickup is Saturdays — date adjusted to the next Saturday.');
         } else {
+          // Valid future Saturday — accept as-is
           setDateHint(ruleText('pickup'));
         }
         el.setCustomValidity('');
         return;
       }
 
-      // Shipping path (disabled in UI, but keep validation tidy)
+      // Shipping path (disabled in UI, kept tidy)
       if (picked.getDay() !== 5) {
-        const fri = nextDowFrom(picked, 5);
+        const fri = startOfDay(nextDowFrom(picked, 5));
         el.value = toYMD(fri);
         setDateHint('Shipping is Fridays — date adjusted to the next Friday.');
       } else {
