@@ -208,7 +208,7 @@ export default function OrderPage() {
         const firstBlockedYMD = toYMD(minSatRaw);
         const reason = blackouts[firstBlockedYMD];
         setBlackoutNotice(
-          `We won’t be at the market this week${reason ? ` — ${reason}` : ''}. We’ll be back on ${backOn}.`
+          `We won’t be at the market this week${reason ? ` — ${reason}` : ''}. We’ll be back on ${new Date(backOn).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}.`
         );
       } else {
         setBlackoutNotice(null);
@@ -254,7 +254,7 @@ export default function OrderPage() {
           if (isBlackout(pickedSatYMD, blackouts)) {
             const reason = blackouts[pickedSatYMD];
             setBlackoutNotice(
-              `We won’t be at the market this week${reason ? ` — ${reason}` : ''}. We’ll be back on ${toYMD(finalPick)}.`
+              `We won’t be at the market this week${reason ? ` — ${reason}` : ''}. We’ll be back on ${finalPick.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}.`
             );
             setDateHint('Date adjusted to the next available Saturday.');
           } else {
