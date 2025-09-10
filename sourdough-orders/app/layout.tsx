@@ -11,7 +11,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <head>
         {/* Force browsers to always pull the latest manifest */}
-        <link rel="manifest" href="/manifest.webmanifest?v=2025-09-10" />
+        <link rel="manifest" href="/manifest.webmanifest?v=2025-09-10-2" />
 
         {/* Theme + background colors for PWA splash */}
         <meta name="theme-color" content="#ffffff" />
