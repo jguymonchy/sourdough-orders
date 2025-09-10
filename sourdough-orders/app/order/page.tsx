@@ -8,6 +8,11 @@ type Flavor = { name: string; price: number };
 const FLAVORS_CSV_URL =
   'https://docs.google.com/spreadsheets/d/e/2PACX-1vSwsTLwZpD-JCURv_-X4KtREOH1vFo2Ys9Me94io0Rq-MLcLcLvbeJb-ETrHbsa7p4FimwBNMMAsjlK/pub?gid=0&single=true&output=csv';
 
+// === TODO: replace with your published CSV URL for the "Blackouts" tab ===
+// Expected headers: date,note  (date format: YYYY-MM-DD)
+const BLACKOUTS_CSV_URL =
+  'https://docs.google.com/spreadsheets/d/e/REPLACE_WITH_YOUR_BLACKOUTS_CSV/pub?gid=0&single=true&output=csv';
+
 const PRICE_EACH = 10;
 const VENMO_USERNAME = 'John-T-Guymon';
 
@@ -24,6 +29,21 @@ function parseFlavorsCSV(text: string): Flavor[] {
       return { name, price };
     })
     .filter((f) => f.name);
+}
+
+function parseBlackoutsCSV(text: string): Record<string, string | undefined> {
+  // expects headers: date,note  (date in YYYY-MM-DD)
+  const lines = text.trim().split(/\r?\n/);
+  if (lines.length <= 1) return {};
+  const map: Record<string, string | undefined> = {};
+  for (const line of lines.slice(1)) {
+    if (!line.trim()) continue;
+    const [dateRaw, ...rest] = line.split(',');
+    const note = rest.join(',').replace(/^"|"$/g, '').trim() || undefined;
+    const date = String(dateRaw || '').trim();
+    if (date) map[date] = note;
+  }
+  return map;
 }
 
 function slugify(s: string) {
@@ -88,6 +108,19 @@ function nextPickupSaturdayConsideringCutoff(now: Date) {
   return thisOrSameSaturday;
 }
 
+// ---- Blackout helpers ----
+function isBlackout(ymd: string, blackouts: Record<string, string | undefined>) {
+  return Boolean(blackouts[ymd]);
+}
+function findNextAvailableSaturday(from: Date, blackouts: Record<string, string | undefined>) {
+  let d = startOfDay(nextOrSameDowFrom(from, 6));
+  // advance week-by-week until not blacked out
+  while (isBlackout(toYMD(d), blackouts)) {
+    d.setDate(d.getDate() + 7);
+  }
+  return d;
+}
+
 export default function OrderPage() {
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -102,6 +135,7 @@ export default function OrderPage() {
 
   const [method, setMethod] = useState<'pickup' | 'shipping'>('pickup');
   const [dateHint, setDateHint] = useState<string>('');
+  const [blackoutNotice, setBlackoutNotice] = useState<string | null>(null);
   const dateRef = useRef<HTMLInputElement | null>(null);
 
   type Line = { name: string; qty: number };
@@ -123,6 +157,17 @@ export default function OrderPage() {
     [flavors]
   );
 
+  // Blackouts from sheet
+  const [blackouts, setBlackouts] = useState<Record<string, string | undefined>>({});
+  useEffect(() => {
+    const u = new URL(BLACKOUTS_CSV_URL);
+    u.searchParams.set('ts', String(Date.now())); // cache-buster
+    fetch(u.toString(), { cache: 'no-store' })
+      .then((r) => r.text())
+      .then((t) => setBlackouts(parseBlackoutsCSV(t)))
+      .catch(() => setBlackouts({}));
+  }, []);
+
   const total = useMemo(
     () => items.reduce((sum, i) => sum + (i.qty || 0) * (priceMap[i.name] ?? PRICE_EACH), 0),
     [items, priceMap]
@@ -143,24 +188,40 @@ export default function OrderPage() {
     return 'Shipping goes out on Fridays (US only).';
   }
 
-  // Initialize default date and set <input min> whenever method changes
+  // Initialize default date and set <input min> whenever method or blackouts change
   useEffect(() => {
     const el = dateRef.current;
     setDateHint(ruleText(method));
     if (!el) return;
 
     if (method === 'pickup') {
-      const minSat = startOfDay(nextPickupSaturdayConsideringCutoff(new Date()));
-      el.value = toYMD(minSat);
-      el.min = toYMD(minSat); // prevent earlier dates
+      const now = new Date();
+      const minSatRaw = startOfDay(nextPickupSaturdayConsideringCutoff(now));
+      const firstAvailable = findNextAvailableSaturday(minSatRaw, blackouts);
+
+      el.value = toYMD(firstAvailable);
+      el.min = toYMD(firstAvailable); // prevent earlier dates
       el.setCustomValidity('');
+
+      if (firstAvailable.getTime() !== minSatRaw.getTime()) {
+        const backOn = toYMD(firstAvailable);
+        const firstBlockedYMD = toYMD(minSatRaw);
+        const reason = blackouts[firstBlockedYMD];
+        setBlackoutNotice(
+          `We won’t be at the market this week${reason ? ` — ${reason}` : ''}. We’ll be back on ${backOn}.`
+        );
+      } else {
+        setBlackoutNotice(null);
+      }
     } else {
       const fri = startOfDay(nextOrSameDowFrom(new Date(), 5));
       el.value = toYMD(fri);
       el.min = toYMD(fri);
       el.setCustomValidity('');
+      setBlackoutNotice(null);
     }
-  }, [method]);
+    // Re-run when blackouts change to keep min/current date valid
+  }, [method, blackouts]);
 
   function validateOrSnapDate(el: HTMLInputElement) {
     if (!el.value) return;
@@ -170,23 +231,43 @@ export default function OrderPage() {
       if (method === 'pickup') {
         const minSat = startOfDay(nextPickupSaturdayConsideringCutoff(new Date()));
 
-        // Too early? lock to earliest allowed Saturday
+        // Too early? lock to earliest allowed Saturday (and then to next available if blacked out)
         if (picked < minSat) {
-          el.value = toYMD(minSat);
+          const firstAvailable = findNextAvailableSaturday(minSat, blackouts);
+          el.value = toYMD(firstAvailable);
           setDateHint('Pickup date adjusted to the earliest available Saturday based on the Thu 10:00 AM cutoff.');
+          setBlackoutNotice(null);
           el.setCustomValidity('');
           return;
         }
 
-        // Not a Saturday? snap forward to the next Saturday from that picked date
-        if (picked.getDay() !== 6) {
-          const nextSat = startOfDay(nextDowFrom(picked, 6));
-          el.value = toYMD(nextSat);
-          setDateHint('Pickup is Saturdays — date adjusted to the next Saturday.');
+        // Ensure Saturday
+        const pickedSat = picked.getDay() === 6 ? picked : startOfDay(nextDowFrom(picked, 6));
+
+        // If blackout, jump to next available
+        const pickedSatYMD = toYMD(pickedSat);
+        const finalPick = isBlackout(pickedSatYMD, blackouts)
+          ? findNextAvailableSaturday(pickedSat, blackouts)
+          : pickedSat;
+
+        if (toYMD(finalPick) !== el.value) {
+          if (isBlackout(pickedSatYMD, blackouts)) {
+            const reason = blackouts[pickedSatYMD];
+            setBlackoutNotice(
+              `We won’t be at the market this week${reason ? ` — ${reason}` : ''}. We’ll be back on ${toYMD(finalPick)}.`
+            );
+            setDateHint('Date adjusted to the next available Saturday.');
+          } else {
+            setBlackoutNotice(null);
+            setDateHint('Pickup is Saturdays — date adjusted to the next Saturday.');
+          }
+          el.value = toYMD(finalPick);
         } else {
-          // Valid future Saturday — accept as-is
+          // No change needed
+          setBlackoutNotice(null);
           setDateHint(ruleText('pickup'));
         }
+
         el.setCustomValidity('');
         return;
       }
@@ -199,6 +280,7 @@ export default function OrderPage() {
       } else {
         setDateHint(ruleText('shipping'));
       }
+      setBlackoutNotice(null);
       el.setCustomValidity('');
     } catch {
       el.setCustomValidity('');
@@ -308,6 +390,29 @@ export default function OrderPage() {
   const venmoDeepLink = buildVenmoDeepLink(VENMO_USERNAME, lastTotal, venmoNote);
   const venmoWebLink = `https://account.venmo.com/u/${VENMO_USERNAME}`;
 
+  // helper to list upcoming blocked dates (nice UI hint)
+  const UpcomingBlackouts = () => {
+    const upcoming = Object.keys(blackouts)
+      .filter((d) => startOfDay(fromYMD(d)) >= startOfDay(new Date()))
+      .sort()
+      .slice(0, 3);
+
+    if (!upcoming.length) return null;
+    return (
+      <div style={{ marginTop: 6, fontSize: 12, color: '#555' }}>
+        <strong>Heads up:</strong> No pickup on{' '}
+        {upcoming
+          .map((d) => {
+            const note = blackouts[d];
+            const nice = fromYMD(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+            return `${nice}${note ? ` (${note})` : ''}`;
+          })
+          .join(', ')}
+        .
+      </div>
+    );
+  };
+
   return (
     <div className="container">
       <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
@@ -380,10 +485,17 @@ export default function OrderPage() {
                   name="pickup_date"
                   type="date"
                   onBlur={(e) => validateOrSnapDate(e.currentTarget)}
+                  onChange={(e) => validateOrSnapDate(e.currentTarget)}
                 />
                 <div style={{ marginTop: 6, color: '#666', fontSize: 12 }}>
                   {dateHint || ruleText(method)}
                 </div>
+                {blackoutNotice && (
+                  <div style={{ marginTop: 6, fontSize: 13, color: '#9a3d3d' }}>
+                    {blackoutNotice}
+                  </div>
+                )}
+                <UpcomingBlackouts />
               </div>
 
               {/* Address (Shipping only) */}
@@ -532,7 +644,7 @@ export default function OrderPage() {
                             Open Venmo & Pay ${lastTotal}
                           </a>
                           <a
-                            href={venmoWebLink}
+                            href={`https://account.venmo.com/u/${VENMO_USERNAME}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             style={{ textDecoration: 'underline', color: '#333' }}
