@@ -188,104 +188,118 @@ export default function OrderPage() {
     return 'Shipping goes out on Fridays (US only).';
   }
 
-  // Initialize default date and set <input min> whenever method or blackouts change
-  useEffect(() => {
-    const el = dateRef.current;
-    setDateHint(ruleText(method));
-    if (!el) return;
+// Initialize default date and set <input min> whenever method or blackouts change
+useEffect(() => {
+  const el = dateRef.current;
+  setDateHint(ruleText(method));
+  if (!el) return;
+
+  if (method === 'pickup') {
+    const now = new Date();
+    const minSatRaw = startOfDay(nextPickupSaturdayConsideringCutoff(now));
+    const firstAvailable = findNextAvailableSaturday(minSatRaw, blackouts);
+
+    el.value = toYMD(firstAvailable);
+    el.min = toYMD(firstAvailable); // prevent earlier dates
+    el.setCustomValidity('');
+
+    if (firstAvailable.getTime() !== minSatRaw.getTime()) {
+      const firstBlockedYMD = toYMD(minSatRaw);
+      const reason = blackouts[firstBlockedYMD];
+      const nice = firstAvailable.toLocaleDateString(undefined, {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      });
+      setBlackoutNotice(
+        `We won’t be at the market this week${reason ? ` — ${reason}` : ''}. We’ll be back on ${nice}.`
+      );
+      // Suppress neutral hint when blackout message is active
+      setDateHint('');
+    } else {
+      setBlackoutNotice(null);
+      setDateHint(ruleText('pickup'));
+    }
+  } else {
+    const fri = startOfDay(nextOrSameDowFrom(new Date(), 5));
+    el.value = toYMD(fri);
+    el.min = toYMD(fri);
+    el.setCustomValidity('');
+    setBlackoutNotice(null);
+    // ruleText(method) was already set at the top; keep it for shipping
+  }
+  // Re-run when blackouts change to keep min/current date valid
+}, [method, blackouts]);
+
+function validateOrSnapDate(el: HTMLInputElement) {
+  if (!el.value) return;
+  try {
+    const picked = startOfDay(fromYMD(el.value));
 
     if (method === 'pickup') {
-      const now = new Date();
-      const minSatRaw = startOfDay(nextPickupSaturdayConsideringCutoff(now));
-      const firstAvailable = findNextAvailableSaturday(minSatRaw, blackouts);
+      const minSat = startOfDay(nextPickupSaturdayConsideringCutoff(new Date()));
 
-      el.value = toYMD(firstAvailable);
-      el.min = toYMD(firstAvailable); // prevent earlier dates
-      el.setCustomValidity('');
-
-      if (firstAvailable.getTime() !== minSatRaw.getTime()) {
-        const backOn = toYMD(firstAvailable);
-        const firstBlockedYMD = toYMD(minSatRaw);
-        const reason = blackouts[firstBlockedYMD];
-        setBlackoutNotice(
-          `We won’t be at the market this week${reason ? ` — ${reason}` : ''}. We’ll be back on ${new Date(backOn).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}.`
-        );
-      } else {
+      // Too early? lock to earliest allowed Saturday (and then to next available if blacked out)
+      if (picked < minSat) {
+        const firstAvailable = findNextAvailableSaturday(minSat, blackouts);
+        el.value = toYMD(firstAvailable);
+        setDateHint('Pickup date adjusted to the earliest available Saturday based on the Thu 10:00 AM cutoff.');
         setBlackoutNotice(null);
-      }
-    } else {
-      const fri = startOfDay(nextOrSameDowFrom(new Date(), 5));
-      el.value = toYMD(fri);
-      el.min = toYMD(fri);
-      el.setCustomValidity('');
-      setBlackoutNotice(null);
-    }
-    // Re-run when blackouts change to keep min/current date valid
-  }, [method, blackouts]);
-
-  function validateOrSnapDate(el: HTMLInputElement) {
-    if (!el.value) return;
-    try {
-      const picked = startOfDay(fromYMD(el.value));
-
-      if (method === 'pickup') {
-        const minSat = startOfDay(nextPickupSaturdayConsideringCutoff(new Date()));
-
-        // Too early? lock to earliest allowed Saturday (and then to next available if blacked out)
-        if (picked < minSat) {
-          const firstAvailable = findNextAvailableSaturday(minSat, blackouts);
-          el.value = toYMD(firstAvailable);
-          setDateHint('Pickup date adjusted to the earliest available Saturday based on the Thu 10:00 AM cutoff.');
-          setBlackoutNotice(null);
-          el.setCustomValidity('');
-          return;
-        }
-
-        // Ensure Saturday
-        const pickedSat = picked.getDay() === 6 ? picked : startOfDay(nextDowFrom(picked, 6));
-
-        // If blackout, jump to next available
-        const pickedSatYMD = toYMD(pickedSat);
-        const finalPick = isBlackout(pickedSatYMD, blackouts)
-          ? findNextAvailableSaturday(pickedSat, blackouts)
-          : pickedSat;
-
-        if (toYMD(finalPick) !== el.value) {
-          if (isBlackout(pickedSatYMD, blackouts)) {
-            const reason = blackouts[pickedSatYMD];
-            setBlackoutNotice(
-              `We won’t be at the market this week${reason ? ` — ${reason}` : ''}. We’ll be back on ${finalPick.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}.`
-            );
-            setDateHint('Date adjusted to the next available Saturday.');
-          } else {
-            setBlackoutNotice(null);
-            setDateHint('Pickup is Saturdays — date adjusted to the next Saturday.');
-          }
-          el.value = toYMD(finalPick);
-        } else {
-          // No change needed
-          setBlackoutNotice(null);
-          setDateHint(ruleText('pickup'));
-        }
-
         el.setCustomValidity('');
         return;
       }
 
-      // Shipping path (disabled in UI, kept tidy)
-      if (picked.getDay() !== 5) {
-        const fri = startOfDay(nextDowFrom(picked, 5));
-        el.value = toYMD(fri);
-        setDateHint('Shipping is Fridays — date adjusted to the next Friday.');
+      // Ensure Saturday
+      const pickedSat = picked.getDay() === 6 ? picked : startOfDay(nextDowFrom(picked, 6));
+
+      // If blackout, jump to next available
+      const pickedSatYMD = toYMD(pickedSat);
+      const finalPick = isBlackout(pickedSatYMD, blackouts)
+        ? findNextAvailableSaturday(pickedSat, blackouts)
+        : pickedSat;
+
+      if (toYMD(finalPick) !== el.value) {
+        if (isBlackout(pickedSatYMD, blackouts)) {
+          const reason = blackouts[pickedSatYMD];
+          const nice = finalPick.toLocaleDateString(undefined, {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+          });
+          setBlackoutNotice(
+            `We won’t be at the market this week${reason ? ` — ${reason}` : ''}. We’ll be back on ${nice}.`
+          );
+          // Suppress neutral hint when blackout message is active
+          setDateHint('');
+        } else {
+          setBlackoutNotice(null);
+          setDateHint('Pickup is Saturdays — date adjusted to the next Saturday.');
+        }
+        el.value = toYMD(finalPick);
       } else {
-        setDateHint(ruleText('shipping'));
+        // No change needed
+        setBlackoutNotice(null);
+        setDateHint(ruleText('pickup'));
       }
-      setBlackoutNotice(null);
+
       el.setCustomValidity('');
-    } catch {
-      el.setCustomValidity('');
+      return;
     }
+
+    // Shipping path (disabled in UI, kept tidy)
+    if (picked.getDay() !== 5) {
+      const fri = startOfDay(nextDowFrom(picked, 5));
+      el.value = toYMD(fri);
+      setDateHint('Shipping is Fridays — date adjusted to the next Friday.');
+    } else {
+      setDateHint(ruleText('shipping'));
+    }
+    setBlackoutNotice(null);
+    el.setCustomValidity('');
+  } catch {
+    el.setCustomValidity('');
   }
+}
 
   // ---- Items helpers ----
   function addItemByName(name: string) {
