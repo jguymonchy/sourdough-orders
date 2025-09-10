@@ -11,7 +11,7 @@ const FLAVORS_CSV_URL =
 // === TODO: replace with your published CSV URL for the "Blackouts" tab ===
 // Expected headers: date,note  (date format: YYYY-MM-DD)
 const BLACKOUTS_CSV_URL =
-  'https://docs.google.com/spreadsheets/d/e/REPLACE_WITH_YOUR_BLACKOUTS_CSV/pub?gid=0&single=true&output=csv';
+  'https://docs.google.com/spreadsheets/d/e/https://docs.google.com/spreadsheets/d/e/2PACX-1vSwsTLwZpD-JCURv_-X4KtREOH1vFo2Ys9Me94io0Rq-MLcLcLvbeJb-ETrHbsa7p4FimwBNMMAsjlK/pub?gid=943816390&single=true&output=csv/pub?gid=0&single=true&output=csv';
 
 const PRICE_EACH = 10;
 const VENMO_USERNAME = 'John-T-Guymon';
