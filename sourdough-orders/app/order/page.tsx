@@ -565,87 +565,110 @@ function validateOrSnapDate(el: HTMLInputElement) {
                 <input name="postal" disabled={addressDisabled} required={!addressDisabled} />
               </div>
 
-              {/* Items */}
-              <div style={{ marginTop: 6, fontWeight: 700, fontSize: 15 }}>Items</div>
-              <div>
-                <label style={{ fontWeight: 600, fontSize: 14, display: 'block', marginBottom: 6 }}>
-                  Choose a Bread Flavor
-                </label>
-                <select
-                  value={picker}
-                  onChange={(e) => {
-                    const name = e.target.value;
-                    setPicker(name);
-                    addItemByName(name);
-                    setTimeout(() => setPicker(''), 0);
-                  }}
-                >
-                  <option value="" disabled hidden>— Select a Bread Flavor —</option>
-                  {flavors.map((f) => (
-                    <option key={f.name} value={f.name}>
-                      {f.name} — ${f.price.toFixed(2)}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            {/* Items */}
+<div style={{ marginTop: 6, fontWeight: 700, fontSize: 15 }}>Items</div>
+<div>
+  <label style={{ fontWeight: 600, fontSize: 14, display: 'block', marginBottom: 6 }}>
+    Choose a Bread Flavor
+  </label>
+  <select
+    value={picker}
+    onChange={(e) => {
+      const name = e.target.value;
+      setPicker(name);
+      addItemByName(name);
+      setTimeout(() => setPicker(''), 0);
+    }}
+  >
+    <option value="" disabled hidden>— Select a Bread Flavor —</option>
+    {flavors.map((f) => (
+      <option key={f.name} value={f.name}>
+        {f.name} — ${f.price.toFixed(2)}
+      </option>
+    ))}
+  </select>
+</div>
 
-              {items.length > 0 && (
-                <div style={{ border: '1px solid #eee', borderRadius: 10 }}>
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: '1fr 120px 80px',
-                      padding: '8px 10px',
-                      borderBottom: '1px solid #eee',
-                      fontWeight: 600,
-                    }}
-                  >
-                    <div>Item</div>
-                    <div style={{ textAlign: 'right' }}>Qty</div>
-                    <div />
-                  </div>
-                  {items.map((line, idx) => (
-                    <div
-                      key={`${line.name}-${idx}`}
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: '1fr 120px 80px',
-                        padding: '8px 10px',
-                        alignItems: 'center',
-                        borderBottom: idx < items.length - 1 ? '1px solid #f3f3f3' : 'none',
-                      }}
-                    >
-                      <div>{line.name}</div>
-                      <div style={{ textAlign: 'right' }}>
-                        <input
-                          type="number"
-                          min={0}
-                          value={line.qty}
-                          onChange={(e) => setQty(idx, Math.max(0, Number(e.target.value || 0)))}
-                          style={{ width: 100, textAlign: 'right' }}
-                        />
-                      </div>
-                      <div>
-                        <button
-                          type="button"
-                          onClick={() => removeItem(idx)}
-                          style={{
-                            appearance: 'none',
-                            border: 'none',
-                            background: '#eee',
-                            color: '#333',
-                            padding: '10px 12px',
-                            borderRadius: 10,
-                            cursor: 'pointer',
-                          }}
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+{/* Notes (optional) — moved under the flavor picker */}
+<div style={{ marginTop: 12 }}>
+  <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>
+    Notes (optional)
+  </label>
+  <textarea
+    name="notes"
+    placeholder="Anything we should know"
+    rows={3}
+    maxLength={500}
+    style={{
+      width: '100%',
+      padding: '10px 12px',
+      borderRadius: 10,
+      border: '1px solid #ccc',
+      resize: 'vertical',
+      fontFamily: 'inherit',
+      fontSize: 14,
+      lineHeight: 1.4,
+    }}
+  />
+</div>
+
+{items.length > 0 && (
+  <div style={{ border: '1px solid #eee', borderRadius: 10 }}>
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: '1fr 120px 80px',
+        padding: '8px 10px',
+        borderBottom: '1px solid #eee',
+        fontWeight: 600,
+      }}
+    >
+      <div>Item</div>
+      <div style={{ textAlign: 'right' }}>Qty</div>
+      <div />
+    </div>
+    {items.map((line, idx) => (
+      <div
+        key={`${line.name}-${idx}`}
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 120px 80px',
+          padding: '8px 10px',
+          alignItems: 'center',
+          borderBottom: idx < items.length - 1 ? '1px solid #f3f3f3' : 'none',
+        }}
+      >
+        <div>{line.name}</div>
+        <div style={{ textAlign: 'right' }}>
+          <input
+            type="number"
+            min={0}
+            value={line.qty}
+            onChange={(e) => setQty(idx, Math.max(0, Number(e.target.value || 0)))}
+            style={{ width: 100, textAlign: 'right' }}
+          />
+        </div>
+        <div>
+          <button
+            type="button"
+            onClick={() => removeItem(idx)}
+            style={{
+              appearance: 'none',
+              border: 'none',
+              background: '#eee',
+              color: '#333',
+              padding: '10px 12px',
+              borderRadius: 10,
+              cursor: 'pointer',
+            }}
+          >
+            Remove
+          </button>
+        </div>
+      </div>
+    ))}
+  </div>
+)}
 
               {/* Total + Submit */}
               <div style={{ marginTop: 6, color: '#333' }}>
