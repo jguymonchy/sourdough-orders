@@ -601,18 +601,26 @@ function validateOrSnapDate(el: HTMLInputElement) {
     onBlur={(e) => validateOrSnapDate(e.currentTarget)}
     onChange={(e) => validateOrSnapDate(e.currentTarget)}
   />
+
   {blackoutNotice ? (
+    // Show blackout message (red)
     <div style={{ marginTop: 6, fontSize: 13, color: '#9a3d3d' }}>
       {blackoutNotice}
     </div>
+  ) : specialNote ? (
+    // Show special Friday message (green)
+    <div style={{ marginTop: 6, fontSize: 12, color: '#1f6d32' }}>
+      {specialNote}
+    </div>
   ) : (
+    // Default rules/hint (gray)
     <div style={{ marginTop: 6, color: '#666', fontSize: 12 }}>
       {dateHint || ruleText(method)}
     </div>
   )}
+
   <UpcomingBlackouts />
 </div>
-
 
 {/* Address (Shipping only) */}
 <div style={{ marginTop: 6, fontWeight: 700, fontSize: 15 }}>
