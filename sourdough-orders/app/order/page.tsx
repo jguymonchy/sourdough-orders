@@ -514,60 +514,34 @@ function validateOrSnapDate(el: HTMLInputElement) {
 </div>
 
 
-{/* Notes (optional) */}
-<div style={{ marginTop: 6 }}>
-  <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>
-    Notes (optional)
-  </label>
-  <textarea
-    name="notes"
-    placeholder="Anything we should know? e.g., pickup window, gift note, no olives, etc."
-    rows={3}
-    maxLength={500}
-    style={{
-      width: '100%',
-      padding: '10px 12px',
-      borderRadius: 10,
-      border: '1px solid #ccc',
-      resize: 'vertical',
-      fontFamily: 'inherit',
-      fontSize: 14,
-      lineHeight: 1.4,
-    }}
-  />
-  <div style={{ marginTop: 6, color: '#777', fontSize: 12 }}>
-    Optional. Up to 500 characters.
+{/* Address (Shipping only) */}
+<div style={{ marginTop: 6, fontWeight: 700, fontSize: 15 }}>
+  Shipping Address (only if “Shipping”)
+</div>
+<div>
+  <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>Address line 1</label>
+  <input name="address1" disabled={addressDisabled} required={!addressDisabled} />
+</div>
+<div>
+  <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>Address line 2</label>
+  <input name="address2" disabled={addressDisabled} />
+</div>
+<div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+  <div>
+    <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>City</label>
+    <input name="city" disabled={addressDisabled} required={!addressDisabled} />
+  </div>
+  <div>
+    <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>State</label>
+    <input name="state" disabled={addressDisabled} required={!addressDisabled} />
   </div>
 </div>
+<div>
+  <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>Postal Code</label>
+  <input name="postal" disabled={addressDisabled} required={!addressDisabled} />
+</div>
 
-              {/* Address (Shipping only) */}
-              <div style={{ marginTop: 6, fontWeight: 700, fontSize: 15 }}>
-                Shipping Address (only if “Shipping”)
-              </div>
-              <div>
-                <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>Address line 1</label>
-                <input name="address1" disabled={addressDisabled} required={!addressDisabled} />
-              </div>
-              <div>
-                <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>Address line 2</label>
-                <input name="address2" disabled={addressDisabled} />
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div>
-                  <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>City</label>
-                  <input name="city" disabled={addressDisabled} required={!addressDisabled} />
-                </div>
-                <div>
-                  <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>State</label>
-                  <input name="state" disabled={addressDisabled} required={!addressDisabled} />
-                </div>
-              </div>
-              <div>
-                <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>Postal Code</label>
-                <input name="postal" disabled={addressDisabled} required={!addressDisabled} />
-              </div>
-
-            {/* Items */}
+{/* Items */}
 <div style={{ marginTop: 6, fontWeight: 700, fontSize: 15 }}>Items</div>
 <div>
   <label style={{ fontWeight: 600, fontSize: 14, display: 'block', marginBottom: 6 }}>
@@ -591,7 +565,7 @@ function validateOrSnapDate(el: HTMLInputElement) {
   </select>
 </div>
 
-{/* Notes (optional) — moved under the flavor picker */}
+{/* Notes (optional) — the ONLY notes field, under the flavor picker */}
 <div style={{ marginTop: 12 }}>
   <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>
     Notes (optional)
@@ -671,6 +645,7 @@ function validateOrSnapDate(el: HTMLInputElement) {
     ))}
   </div>
 )}
+
 
               {/* Total + Submit */}
               <div style={{ marginTop: 6, color: '#333' }}>
