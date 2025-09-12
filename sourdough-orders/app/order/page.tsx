@@ -491,26 +491,52 @@ function validateOrSnapDate(el: HTMLInputElement) {
                 </div>
               </div>
 
-              {/* Date */}
-              <div>
-                <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>Date</label>
-                <input
-                  ref={dateRef}
-                  name="pickup_date"
-                  type="date"
-                  onBlur={(e) => validateOrSnapDate(e.currentTarget)}
-                  onChange={(e) => validateOrSnapDate(e.currentTarget)}
-                />
-                <div style={{ marginTop: 6, color: '#666', fontSize: 12 }}>
-                  {dateHint || ruleText(method)}
-                </div>
-                {blackoutNotice && (
-                  <div style={{ marginTop: 6, fontSize: 13, color: '#9a3d3d' }}>
-                    {blackoutNotice}
-                  </div>
-                )}
-                <UpcomingBlackouts />
-              </div>
+             {/* Date */}
+<div>
+  <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>Date</label>
+  <input
+    ref={dateRef}
+    name="pickup_date"
+    type="date"
+    onBlur={(e) => validateOrSnapDate(e.currentTarget)}
+  />
+  {blackoutNotice ? (
+    <div style={{ marginTop: 6, fontSize: 13, color: '#9a3d3d' }}>
+      {blackoutNotice}
+    </div>
+  ) : (
+    <div style={{ marginTop: 6, color: '#666', fontSize: 12 }}>
+      {dateHint || ruleText(method)}
+    </div>
+  )}
+  <UpcomingBlackouts />
+</div>
+
+{/* Notes (optional) */}
+<div style={{ marginTop: 6 }}>
+  <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>
+    Notes (optional)
+  </label>
+  <textarea
+    name="notes"
+    placeholder="Anything we should know? e.g., pickup window, gift note, no olives, etc."
+    rows={3}
+    maxLength={500}
+    style={{
+      width: '100%',
+      padding: '10px 12px',
+      borderRadius: 10,
+      border: '1px solid #ccc',
+      resize: 'vertical',
+      fontFamily: 'inherit',
+      fontSize: 14,
+      lineHeight: 1.4,
+    }}
+  />
+  <div style={{ marginTop: 6, color: '#777', fontSize: 12 }}>
+    Optional. Up to 500 characters.
+  </div>
+</div>
 
               {/* Address (Shipping only) */}
               <div style={{ marginTop: 6, fontWeight: 700, fontSize: 15 }}>
