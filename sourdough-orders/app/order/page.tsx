@@ -300,56 +300,93 @@ function validateOrSnapDate(el: HTMLInputElement) {
     const picked = startOfDay(fromYMD(el.value));
 
     if (method === 'pickup') {
-      const minSat = startOfDay(nextPickupSaturdayConsideringCutoff(new Date()));
+      const now = new Date();
 
-      // Too early? lock to earliest allowed Saturday (and then to next available if blacked out)
-      if (picked < minSat) {
-        const firstAvailable = findNextAvailableSaturday(minSat, blackouts);
-        el.value = toYMD(firstAvailable);
-        setDateHint('Pickup date adjusted to the earliest available Saturday based on the Thu 10:00 AM cutoff.');
+      // Absolute earliest allowed (eligible Friday vs next available Saturday)
+      const minSat = startOfDay(nextPickupSaturdayConsideringCutoff(now));
+      const firstAvailableSaturday = findNextAvailableSaturday(minSat, blackouts);
+      const eligible = getEligibleSpecialFriday(now, specials);
+      const earliestAllowed = eligible && eligible.date.getTime() < firstAvailableSaturday.getTime()
+        ? eligible.date
+        : firstAvailableSaturday;
+
+      // Too early → snap to earliestAllowed
+      if (picked < earliestAllowed) {
+        el.value = toYMD(earliestAllowed);
         setBlackoutNotice(null);
+        setDateHint('Pickup date adjusted to the earliest available date.');
+        setSpecialNote(eligible && earliestAllowed.getDay() === 5
+          ? (() => {
+              const cutoffNice = fridayCutoff(earliestAllowed).toLocaleString(undefined, {
+                month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
+              });
+              return `Special: Friday pickup available on ${earliestAllowed.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })} (order by ${cutoffNice}).${eligible.note ? ` — ${eligible.note}` : ''}`;
+            })()
+          : null);
         el.setCustomValidity('');
         return;
       }
 
-      // Ensure Saturday
-      const pickedSat = picked.getDay() === 6 ? picked : startOfDay(nextDowFrom(picked, 6));
+      // If user picked a Friday, allow only if it's listed AND before its universal cutoff
+      if (picked.getDay() === 5) {
+        const pickedYMD = toYMD(picked);
+        const isListedFriday = specials[pickedYMD] != null;
+        if (isListedFriday) {
+          const cutoff = fridayCutoff(picked);
+          if (now.getTime() <= cutoff.getTime()) {
+            // Accept this Friday
+            setBlackoutNotice(null);
+            setDateHint('Friday pickup selected (special availability).');
+            const cutoffNice = cutoff.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+            setSpecialNote(`Special: Friday pickup available on ${picked.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })} (order by ${cutoffNice}).${specials[pickedYMD]?.note ? ` — ${specials[pickedYMD]?.note}` : ''}`);
+            el.setCustomValidity('');
+            return;
+          }
+        }
+        // Not eligible → snap to next available Saturday
+        const nextSat = startOfDay(nextDowFrom(picked, 6));
+        const finalSat = findNextAvailableSaturday(nextSat, blackouts);
+        el.value = toYMD(finalSat);
+        setBlackoutNotice(null);
+        setDateHint('Pickup is Saturdays — date adjusted to the next available Saturday.');
+        setSpecialNote(null);
+        el.setCustomValidity('');
+        return;
+      }
 
-      // If blackout, jump to next available
-      const pickedSatYMD = toYMD(pickedSat);
-      const finalPick = isBlackout(pickedSatYMD, blackouts)
-        ? findNextAvailableSaturday(pickedSat, blackouts)
-        : pickedSat;
-
-      if (toYMD(finalPick) !== el.value) {
-        if (isBlackout(pickedSatYMD, blackouts)) {
+      // If not Friday, ensure Saturday and not blacked out
+      if (picked.getDay() !== 6) {
+        const nextSat = startOfDay(nextDowFrom(picked, 6));
+        const finalSat = findNextAvailableSaturday(nextSat, blackouts);
+        el.value = toYMD(finalSat);
+        setBlackoutNotice(null);
+        setDateHint('Pickup is Saturdays — date adjusted to the next available Saturday.');
+        setSpecialNote(null);
+      } else {
+        const pickedSatYMD = toYMD(picked);
+        const finalPick = isBlackout(pickedSatYMD, blackouts)
+          ? findNextAvailableSaturday(picked, blackouts)
+          : picked;
+        if (toYMD(finalPick) !== el.value) {
           const reason = blackouts[pickedSatYMD];
-          const nice = finalPick.toLocaleDateString(undefined, {
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-          });
+          const nice = finalPick.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
           setBlackoutNotice(
             `We won’t be at the market this week${reason ? ` — ${reason}` : ''}. We’ll be back on ${nice}.`
           );
-          // Suppress neutral hint when blackout message is active
           setDateHint('');
+          el.value = toYMD(finalPick);
         } else {
           setBlackoutNotice(null);
-          setDateHint('Pickup is Saturdays — date adjusted to the next Saturday.');
+          setDateHint(ruleText('pickup'));
         }
-        el.value = toYMD(finalPick);
-      } else {
-        // No change needed
-        setBlackoutNotice(null);
-        setDateHint(ruleText('pickup'));
+        setSpecialNote(null);
       }
 
       el.setCustomValidity('');
       return;
     }
 
-    // Shipping path (disabled in UI, kept tidy)
+    // Shipping path (disabled)
     if (picked.getDay() !== 5) {
       const fri = startOfDay(nextDowFrom(picked, 5));
       el.value = toYMD(fri);
@@ -358,12 +395,12 @@ function validateOrSnapDate(el: HTMLInputElement) {
       setDateHint(ruleText('shipping'));
     }
     setBlackoutNotice(null);
+    setSpecialNote(null);
     el.setCustomValidity('');
   } catch {
     el.setCustomValidity('');
   }
 }
-
   // ---- Items helpers ----
   function addItemByName(name: string) {
     if (!name) return;
