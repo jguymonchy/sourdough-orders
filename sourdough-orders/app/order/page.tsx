@@ -31,6 +31,52 @@ function parseFlavorsCSV(text: string): Flavor[] {
     .filter((f) => f.name);
 }
 
+// === Special Friday pickups (CSV) ===
+// Expected headers: date,note
+type SpecialPickup = { note?: string };
+const SPECIALS_CSV_URL =
+  'https://docs.google.com/spreadsheets/d/e/REPLACE_WITH_YOUR_SPECIALPICKUPS_CSV/pub?gid=0&single=true&output=csv';
+
+function parseSpecialsCSV(text: string): Record<string, SpecialPickup> {
+  const lines = text.trim().split(/\r?\n/);
+  if (lines.length <= 1) return {};
+  const map: Record<string, SpecialPickup> = {};
+  for (const line of lines.slice(1)) {
+    if (!line.trim()) continue;
+    const [dateRaw, noteRaw = ''] = line.split(',');
+    const date = String(dateRaw || '').trim();
+    const note = noteRaw.replace(/^"|"$/g, '').trim() || undefined;
+    if (date) map[date] = { note };
+  }
+  return map;
+}
+
+// Compute the universal cutoff for a given Friday: 2 days prior at 10:00 AM (local time)
+function fridayCutoff(friday: Date) {
+  const c = new Date(friday);
+  c.setDate(c.getDate() - 2); // Wednesday
+  c.setHours(10, 0, 0, 0);    // 10:00 AM
+  return c;
+}
+
+// Return the first eligible special Friday >= today whose universal cutoff hasn't passed
+function getEligibleSpecialFriday(now: Date, specials: Record<string, SpecialPickup>) {
+  const todayStart = startOfDay(now).getTime();
+  const candidates = Object.keys(specials)
+    .filter((d) => startOfDay(fromYMD(d)).getTime() >= todayStart)
+    .sort(); // YYYY-MM-DD ascending
+
+  for (const ymd of candidates) {
+    const d = startOfDay(fromYMD(ymd));
+    if (d.getDay() !== 5) continue; // must be Friday
+    if (now.getTime() <= fridayCutoff(d).getTime()) {
+      return { date: d, ymd, note: specials[ymd]?.note };
+    }
+  }
+  return null;
+}
+
+
 function parseBlackoutsCSV(text: string): Record<string, string | undefined> {
   // expects headers: date,note  (date in YYYY-MM-DD)
   const lines = text.trim().split(/\r?\n/);
@@ -188,33 +234,50 @@ export default function OrderPage() {
     return 'Shipping goes out on Fridays (US only).';
   }
 
-// Initialize default date and set <input min> whenever method or blackouts change
+// Initialize default date and set <input min> whenever method, blackouts, or specials change
 useEffect(() => {
   const el = dateRef.current;
   setDateHint(ruleText(method));
+  setSpecialNote(null);
   if (!el) return;
 
   if (method === 'pickup') {
     const now = new Date();
-    const minSatRaw = startOfDay(nextPickupSaturdayConsideringCutoff(now));
-    const firstAvailable = findNextAvailableSaturday(minSatRaw, blackouts);
 
-    el.value = toYMD(firstAvailable);
-    el.min = toYMD(firstAvailable); // prevent earlier dates
+    // Standard earliest Saturday (respecting Thu 10 AM cutoff + blackouts)
+    const minSatRaw = startOfDay(nextPickupSaturdayConsideringCutoff(now));
+    const firstAvailableSaturday = findNextAvailableSaturday(minSatRaw, blackouts);
+
+    // Eligible special Friday (before its universal cutoff)
+    const eligible = getEligibleSpecialFriday(now, specials);
+
+    // Choose earlier of eligible Friday vs Saturday
+    let firstAllowed = firstAvailableSaturday;
+    if (eligible && eligible.date.getTime() < firstAllowed.getTime()) {
+      firstAllowed = eligible.date;
+      const niceFri = eligible.date.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+      const cutoffNice = fridayCutoff(eligible.date).toLocaleString(undefined, {
+        month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
+      });
+      setSpecialNote(
+        `Special: Friday pickup available on ${niceFri} (order by ${cutoffNice}).${eligible.note ? ` — ${eligible.note}` : ''}`
+      );
+    } else {
+      setSpecialNote(null);
+    }
+
+    el.value = toYMD(firstAllowed);
+    el.min = toYMD(firstAllowed);
     el.setCustomValidity('');
 
-    if (firstAvailable.getTime() !== minSatRaw.getTime()) {
+    // Blackout message if we had to skip one or more Saturdays
+    if (firstAllowed.getTime() !== minSatRaw.getTime() && firstAllowed.getDay() === 6) {
       const firstBlockedYMD = toYMD(minSatRaw);
       const reason = blackouts[firstBlockedYMD];
-      const nice = firstAvailable.toLocaleDateString(undefined, {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-      });
+      const nice = firstAllowed.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
       setBlackoutNotice(
         `We won’t be at the market this week${reason ? ` — ${reason}` : ''}. We’ll be back on ${nice}.`
       );
-      // Suppress neutral hint when blackout message is active
       setDateHint('');
     } else {
       setBlackoutNotice(null);
@@ -226,10 +289,10 @@ useEffect(() => {
     el.min = toYMD(fri);
     el.setCustomValidity('');
     setBlackoutNotice(null);
-    // ruleText(method) was already set at the top; keep it for shipping
+    setSpecialNote(null);
   }
-  // Re-run when blackouts change to keep min/current date valid
-}, [method, blackouts]);
+}, [method, blackouts, specials]);
+
 
 function validateOrSnapDate(el: HTMLInputElement) {
   if (!el.value) return;
