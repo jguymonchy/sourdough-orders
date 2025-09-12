@@ -491,7 +491,7 @@ function validateOrSnapDate(el: HTMLInputElement) {
                 </div>
               </div>
 
-             {/* Date */}
+            {/* Date */}
 <div>
   <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>Date</label>
   <input
@@ -499,6 +499,7 @@ function validateOrSnapDate(el: HTMLInputElement) {
     name="pickup_date"
     type="date"
     onBlur={(e) => validateOrSnapDate(e.currentTarget)}
+    onChange={(e) => validateOrSnapDate(e.currentTarget)}
   />
   {blackoutNotice ? (
     <div style={{ marginTop: 6, fontSize: 13, color: '#9a3d3d' }}>
@@ -511,6 +512,7 @@ function validateOrSnapDate(el: HTMLInputElement) {
   )}
   <UpcomingBlackouts />
 </div>
+
 
 {/* Notes (optional) */}
 <div style={{ marginTop: 6 }}>
