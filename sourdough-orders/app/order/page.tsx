@@ -8,10 +8,15 @@ type Flavor = { name: string; price: number };
 const FLAVORS_CSV_URL =
   'https://docs.google.com/spreadsheets/d/e/2PACX-1vSwsTLwZpD-JCURv_-X4KtREOH1vFo2Ys9Me94io0Rq-MLcLcLvbeJb-ETrHbsa7p4FimwBNMMAsjlK/pub?gid=0&single=true&output=csv';
 
-// === TODO: replace with your published CSV URL for the "Blackouts" tab ===
-// Expected headers: date,note  (date format: YYYY-MM-DD)
+// === Blackouts CSV (date,note; date YYYY-MM-DD) ===
 const BLACKOUTS_CSV_URL =
   'https://docs.google.com/spreadsheets/d/e/2PACX-1vSwsTLwZpD-JCURv_-X4KtREOH1vFo2Ys9Me94io0Rq-MLcLcLvbeJb-ETrHbsa7p4FimwBNMMAsjlK/pub?gid=943816390&single=true&output=csv';
+
+// === Special Friday pickups (CSV) ===
+// Expected headers: date,note  (date = YYYY-MM-DD)
+// TODO: replace with your published CSV URL for the "SpecialPickups" tab
+const SPECIALS_CSV_URL =
+  'https://docs.google.com/spreadsheets/d/e/2PACX-1vSwsTLwZpD-JCURv_-X4KtREOH1vFo2Ys9Me94io0Rq-MLcLcLvbeJb-ETrHbsa7p4FimwBNMMAsjlK/pub?gid=971216370&single=true&output=csv';
 
 const PRICE_EACH = 10;
 const VENMO_USERNAME = 'John-T-Guymon';
@@ -31,11 +36,8 @@ function parseFlavorsCSV(text: string): Flavor[] {
     .filter((f) => f.name);
 }
 
-// === Special Friday pickups (CSV) ===
-// Expected headers: date,note
+// === Special Fridays helpers/types ===
 type SpecialPickup = { note?: string };
-const SPECIALS_CSV_URL =
-  'https://docs.google.com/spreadsheets/d/e/REPLACE_WITH_YOUR_SPECIALPICKUPS_CSV/pub?gid=0&single=true&output=csv';
 
 function parseSpecialsCSV(text: string): Record<string, SpecialPickup> {
   const lines = text.trim().split(/\r?\n/);
@@ -51,7 +53,7 @@ function parseSpecialsCSV(text: string): Record<string, SpecialPickup> {
   return map;
 }
 
-// Compute the universal cutoff for a given Friday: 2 days prior at 10:00 AM (local time)
+// Universal cutoff for a given Friday: 2 days prior at 10:00 AM (local time)
 function fridayCutoff(friday: Date) {
   const c = new Date(friday);
   c.setDate(c.getDate() - 2); // Wednesday
@@ -59,7 +61,7 @@ function fridayCutoff(friday: Date) {
   return c;
 }
 
-// Return the first eligible special Friday >= today whose universal cutoff hasn't passed
+// Return the first eligible special Friday >= today whose cutoff hasn't passed
 function getEligibleSpecialFriday(now: Date, specials: Record<string, SpecialPickup>) {
   const todayStart = startOfDay(now).getTime();
   const candidates = Object.keys(specials)
@@ -75,7 +77,6 @@ function getEligibleSpecialFriday(now: Date, specials: Record<string, SpecialPic
   }
   return null;
 }
-
 
 function parseBlackoutsCSV(text: string): Record<string, string | undefined> {
   // expects headers: date,note  (date in YYYY-MM-DD)
@@ -214,6 +215,18 @@ export default function OrderPage() {
       .catch(() => setBlackouts({}));
   }, []);
 
+  // Special Friday pickups (STATE + FETCH) — this was missing in your file
+  const [specials, setSpecials] = useState<Record<string, SpecialPickup>>({});
+  const [specialNote, setSpecialNote] = useState<string | null>(null);
+  useEffect(() => {
+    const u = new URL(SPECIALS_CSV_URL);
+    u.searchParams.set('ts', String(Date.now())); // cache-buster
+    fetch(u.toString(), { cache: 'no-store' })
+      .then((r) => r.text())
+      .then((t) => setSpecials(parseSpecialsCSV(t)))
+      .catch(() => setSpecials({}));
+  }, []);
+
   const total = useMemo(
     () => items.reduce((sum, i) => sum + (i.qty || 0) * (priceMap[i.name] ?? PRICE_EACH), 0),
     [items, priceMap]
@@ -234,173 +247,173 @@ export default function OrderPage() {
     return 'Shipping goes out on Fridays (US only).';
   }
 
-// Initialize default date and set <input min> whenever method, blackouts, or specials change
-useEffect(() => {
-  const el = dateRef.current;
-  setDateHint(ruleText(method));
-  setSpecialNote(null);
-  if (!el) return;
-
-  if (method === 'pickup') {
-    const now = new Date();
-
-    // Standard earliest Saturday (respecting Thu 10 AM cutoff + blackouts)
-    const minSatRaw = startOfDay(nextPickupSaturdayConsideringCutoff(now));
-    const firstAvailableSaturday = findNextAvailableSaturday(minSatRaw, blackouts);
-
-    // Eligible special Friday (before its universal cutoff)
-    const eligible = getEligibleSpecialFriday(now, specials);
-
-    // Choose earlier of eligible Friday vs Saturday
-    let firstAllowed = firstAvailableSaturday;
-    if (eligible && eligible.date.getTime() < firstAllowed.getTime()) {
-      firstAllowed = eligible.date;
-      const niceFri = eligible.date.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
-      const cutoffNice = fridayCutoff(eligible.date).toLocaleString(undefined, {
-        month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
-      });
-      setSpecialNote(
-        `Special: Friday pickup available on ${niceFri} (order by ${cutoffNice}).${eligible.note ? ` — ${eligible.note}` : ''}`
-      );
-    } else {
-      setSpecialNote(null);
-    }
-
-    el.value = toYMD(firstAllowed);
-    el.min = toYMD(firstAllowed);
-    el.setCustomValidity('');
-
-    // Blackout message if we had to skip one or more Saturdays
-    if (firstAllowed.getTime() !== minSatRaw.getTime() && firstAllowed.getDay() === 6) {
-      const firstBlockedYMD = toYMD(minSatRaw);
-      const reason = blackouts[firstBlockedYMD];
-      const nice = firstAllowed.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
-      setBlackoutNotice(
-        `We won’t be at the market this week${reason ? ` — ${reason}` : ''}. We’ll be back on ${nice}.`
-      );
-      setDateHint('');
-    } else {
-      setBlackoutNotice(null);
-      setDateHint(ruleText('pickup'));
-    }
-  } else {
-    const fri = startOfDay(nextOrSameDowFrom(new Date(), 5));
-    el.value = toYMD(fri);
-    el.min = toYMD(fri);
-    el.setCustomValidity('');
-    setBlackoutNotice(null);
+  // Initialize default date and set <input min> whenever method, blackouts, or specials change
+  useEffect(() => {
+    const el = dateRef.current;
+    setDateHint(ruleText(method));
     setSpecialNote(null);
-  }
-}, [method, blackouts, specials]);
-
-
-function validateOrSnapDate(el: HTMLInputElement) {
-  if (!el.value) return;
-  try {
-    const picked = startOfDay(fromYMD(el.value));
+    if (!el) return;
 
     if (method === 'pickup') {
       const now = new Date();
 
-      // Absolute earliest allowed (eligible Friday vs next available Saturday)
-      const minSat = startOfDay(nextPickupSaturdayConsideringCutoff(now));
-      const firstAvailableSaturday = findNextAvailableSaturday(minSat, blackouts);
+      // Standard earliest Saturday (respecting Thu 10 AM cutoff + blackouts)
+      const minSatRaw = startOfDay(nextPickupSaturdayConsideringCutoff(now));
+      const firstAvailableSaturday = findNextAvailableSaturday(minSatRaw, blackouts);
+
+      // Eligible special Friday (before its universal cutoff)
       const eligible = getEligibleSpecialFriday(now, specials);
-      const earliestAllowed = eligible && eligible.date.getTime() < firstAvailableSaturday.getTime()
-        ? eligible.date
-        : firstAvailableSaturday;
 
-      // Too early → snap to earliestAllowed
-      if (picked < earliestAllowed) {
-        el.value = toYMD(earliestAllowed);
-        setBlackoutNotice(null);
-        setDateHint('Pickup date adjusted to the earliest available date.');
-        setSpecialNote(eligible && earliestAllowed.getDay() === 5
-          ? (() => {
-              const cutoffNice = fridayCutoff(earliestAllowed).toLocaleString(undefined, {
-                month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
-              });
-              return `Special: Friday pickup available on ${earliestAllowed.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })} (order by ${cutoffNice}).${eligible.note ? ` — ${eligible.note}` : ''}`;
-            })()
-          : null);
-        el.setCustomValidity('');
-        return;
-      }
-
-      // If user picked a Friday, allow only if it's listed AND before its universal cutoff
-      if (picked.getDay() === 5) {
-        const pickedYMD = toYMD(picked);
-        const isListedFriday = specials[pickedYMD] != null;
-        if (isListedFriday) {
-          const cutoff = fridayCutoff(picked);
-          if (now.getTime() <= cutoff.getTime()) {
-            // Accept this Friday
-            setBlackoutNotice(null);
-            setDateHint('Friday pickup selected (special availability).');
-            const cutoffNice = cutoff.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-            setSpecialNote(`Special: Friday pickup available on ${picked.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })} (order by ${cutoffNice}).${specials[pickedYMD]?.note ? ` — ${specials[pickedYMD]?.note}` : ''}`);
-            el.setCustomValidity('');
-            return;
-          }
-        }
-        // Not eligible → snap to next available Saturday
-        const nextSat = startOfDay(nextDowFrom(picked, 6));
-        const finalSat = findNextAvailableSaturday(nextSat, blackouts);
-        el.value = toYMD(finalSat);
-        setBlackoutNotice(null);
-        setDateHint('Pickup is Saturdays — date adjusted to the next available Saturday.');
-        setSpecialNote(null);
-        el.setCustomValidity('');
-        return;
-      }
-
-      // If not Friday, ensure Saturday and not blacked out
-      if (picked.getDay() !== 6) {
-        const nextSat = startOfDay(nextDowFrom(picked, 6));
-        const finalSat = findNextAvailableSaturday(nextSat, blackouts);
-        el.value = toYMD(finalSat);
-        setBlackoutNotice(null);
-        setDateHint('Pickup is Saturdays — date adjusted to the next available Saturday.');
-        setSpecialNote(null);
+      // Choose earlier of eligible Friday vs Saturday
+      let firstAllowed = firstAvailableSaturday;
+      if (eligible && eligible.date.getTime() < firstAllowed.getTime()) {
+        firstAllowed = eligible.date;
+        const niceFri = eligible.date.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+        const cutoffNice = fridayCutoff(eligible.date).toLocaleString(undefined, {
+          month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
+        });
+        setSpecialNote(
+          `Special: Friday pickup available on ${niceFri} (order by ${cutoffNice}).${eligible.note ? ` — ${eligible.note}` : ''}`
+        );
       } else {
-        const pickedSatYMD = toYMD(picked);
-        const finalPick = isBlackout(pickedSatYMD, blackouts)
-          ? findNextAvailableSaturday(picked, blackouts)
-          : picked;
-        if (toYMD(finalPick) !== el.value) {
-          const reason = blackouts[pickedSatYMD];
-          const nice = finalPick.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
-          setBlackoutNotice(
-            `We won’t be at the market this week${reason ? ` — ${reason}` : ''}. We’ll be back on ${nice}.`
-          );
-          setDateHint('');
-          el.value = toYMD(finalPick);
-        } else {
-          setBlackoutNotice(null);
-          setDateHint(ruleText('pickup'));
-        }
         setSpecialNote(null);
       }
 
+      el.value = toYMD(firstAllowed);
+      el.min = toYMD(firstAllowed);
       el.setCustomValidity('');
-      return;
-    }
 
-    // Shipping path (disabled)
-    if (picked.getDay() !== 5) {
-      const fri = startOfDay(nextDowFrom(picked, 5));
-      el.value = toYMD(fri);
-      setDateHint('Shipping is Fridays — date adjusted to the next Friday.');
+      // Blackout message if we had to skip one or more Saturdays
+      if (firstAllowed.getTime() !== minSatRaw.getTime() && firstAllowed.getDay() === 6) {
+        const firstBlockedYMD = toYMD(minSatRaw);
+        const reason = blackouts[firstBlockedYMD];
+        const nice = firstAllowed.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+        setBlackoutNotice(
+          `We won’t be at the market this week${reason ? ` — ${reason}` : ''}. We’ll be back on ${nice}.`
+        );
+        setDateHint('');
+      } else {
+        setBlackoutNotice(null);
+        setDateHint(ruleText('pickup'));
+      }
     } else {
-      setDateHint(ruleText('shipping'));
+      const fri = startOfDay(nextOrSameDowFrom(new Date(), 5));
+      el.value = toYMD(fri);
+      el.min = toYMD(fri);
+      el.setCustomValidity('');
+      setBlackoutNotice(null);
+      setSpecialNote(null);
     }
-    setBlackoutNotice(null);
-    setSpecialNote(null);
-    el.setCustomValidity('');
-  } catch {
-    el.setCustomValidity('');
+  }, [method, blackouts, specials]);
+
+  function validateOrSnapDate(el: HTMLInputElement) {
+    if (!el.value) return;
+    try {
+      const picked = startOfDay(fromYMD(el.value));
+
+      if (method === 'pickup') {
+        const now = new Date();
+
+        // Absolute earliest allowed (eligible Friday vs next available Saturday)
+        const minSat = startOfDay(nextPickupSaturdayConsideringCutoff(now));
+        const firstAvailableSaturday = findNextAvailableSaturday(minSat, blackouts);
+        const eligible = getEligibleSpecialFriday(now, specials);
+        const earliestAllowed = eligible && eligible.date.getTime() < firstAvailableSaturday.getTime()
+          ? eligible.date
+          : firstAvailableSaturday;
+
+        // Too early → snap to earliestAllowed
+        if (picked < earliestAllowed) {
+          el.value = toYMD(earliestAllowed);
+          setBlackoutNotice(null);
+          setDateHint('Pickup date adjusted to the earliest available date.');
+          setSpecialNote(eligible && earliestAllowed.getDay() === 5
+            ? (() => {
+                const cutoffNice = fridayCutoff(earliestAllowed).toLocaleString(undefined, {
+                  month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
+                });
+                return `Special: Friday pickup available on ${earliestAllowed.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })} (order by ${cutoffNice}).${eligible.note ? ` — ${eligible.note}` : ''}`;
+              })()
+            : null);
+          el.setCustomValidity('');
+          return;
+        }
+
+        // If user picked a Friday, allow only if it's listed AND before its universal cutoff
+        if (picked.getDay() === 5) {
+          const pickedYMD = toYMD(picked);
+          const isListedFriday = specials[pickedYMD] != null;
+          if (isListedFriday) {
+            const cutoff = fridayCutoff(picked);
+            if (now.getTime() <= cutoff.getTime()) {
+              // Accept this Friday
+              setBlackoutNotice(null);
+              setDateHint('Friday pickup selected (special availability).');
+              const cutoffNice = cutoff.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+              setSpecialNote(`Special: Friday pickup available on ${picked.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })} (order by ${cutoffNice}).${specials[pickedYMD]?.note ? ` — ${specials[pickedYMD]?.note}` : ''}`);
+              el.setCustomValidity('');
+              return;
+            }
+          }
+          // Not eligible → snap to next available Saturday
+          const nextSat = startOfDay(nextDowFrom(picked, 6));
+          const finalSat = findNextAvailableSaturday(nextSat, blackouts);
+          el.value = toYMD(finalSat);
+          setBlackoutNotice(null);
+          setDateHint('Pickup is Saturdays — date adjusted to the next available Saturday.');
+          setSpecialNote(null);
+          el.setCustomValidity('');
+          return;
+        }
+
+        // If not Friday, ensure Saturday and not blacked out
+        if (picked.getDay() !== 6) {
+          const nextSat = startOfDay(nextDowFrom(picked, 6));
+          const finalSat = findNextAvailableSaturday(nextSat, blackouts);
+          el.value = toYMD(finalSat);
+          setBlackoutNotice(null);
+          setDateHint('Pickup is Saturdays — date adjusted to the next available Saturday.');
+          setSpecialNote(null);
+        } else {
+          const pickedSatYMD = toYMD(picked);
+          const finalPick = isBlackout(pickedSatYMD, blackouts)
+            ? findNextAvailableSaturday(picked, blackouts)
+            : picked;
+          if (toYMD(finalPick) !== el.value) {
+            const reason = blackouts[pickedSatYMD];
+            const nice = finalPick.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+            setBlackoutNotice(
+              `We won’t be at the market this week${reason ? ` — ${reason}` : ''}. We’ll be back on ${nice}.`
+            );
+            setDateHint('');
+            el.value = toYMD(finalPick);
+          } else {
+            setBlackoutNotice(null);
+            setDateHint(ruleText('pickup'));
+          }
+          setSpecialNote(null);
+        }
+
+        el.setCustomValidity('');
+        return;
+      }
+
+      // Shipping path (disabled)
+      if (picked.getDay() !== 5) {
+        const fri = startOfDay(nextDowFrom(picked, 5));
+        el.value = toYMD(fri);
+        setDateHint('Shipping is Fridays — date adjusted to the next Friday.');
+      } else {
+        setDateHint(ruleText('shipping'));
+      }
+      setBlackoutNotice(null);
+      setSpecialNote(null);
+      el.setCustomValidity('');
+    } catch {
+      el.setCustomValidity('');
+    }
   }
-}
+
   // ---- Items helpers ----
   function addItemByName(name: string) {
     if (!name) return;
@@ -591,169 +604,168 @@ function validateOrSnapDate(el: HTMLInputElement) {
                 </div>
               </div>
 
-            {/* Date */}
-<div>
-  <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>Date</label>
-  <input
-    ref={dateRef}
-    name="pickup_date"
-    type="date"
-    onBlur={(e) => validateOrSnapDate(e.currentTarget)}
-    onChange={(e) => validateOrSnapDate(e.currentTarget)}
-  />
+              {/* Date */}
+              <div>
+                <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>Date</label>
+                <input
+                  ref={dateRef}
+                  name="pickup_date"
+                  type="date"
+                  onBlur={(e) => validateOrSnapDate(e.currentTarget)}
+                  onChange={(e) => validateOrSnapDate(e.currentTarget)}
+                />
 
-  {blackoutNotice ? (
-    // Show blackout message (red)
-    <div style={{ marginTop: 6, fontSize: 13, color: '#9a3d3d' }}>
-      {blackoutNotice}
-    </div>
-  ) : specialNote ? (
-    // Show special Friday message (green)
-    <div style={{ marginTop: 6, fontSize: 12, color: '#1f6d32' }}>
-      {specialNote}
-    </div>
-  ) : (
-    // Default rules/hint (gray)
-    <div style={{ marginTop: 6, color: '#666', fontSize: 12 }}>
-      {dateHint || ruleText(method)}
-    </div>
-  )}
+                {blackoutNotice ? (
+                  // Show blackout message (red)
+                  <div style={{ marginTop: 6, fontSize: 13, color: '#9a3d3d' }}>
+                    {blackoutNotice}
+                  </div>
+                ) : specialNote ? (
+                  // Show special Friday message (green)
+                  <div style={{ marginTop: 6, fontSize: 12, color: '#1f6d32' }}>
+                    {specialNote}
+                  </div>
+                ) : (
+                  // Default rules/hint (gray)
+                  <div style={{ marginTop: 6, color: '#666', fontSize: 12 }}>
+                    {dateHint || ruleText(method)}
+                  </div>
+                )}
 
-  <UpcomingBlackouts />
-</div>
+                <UpcomingBlackouts />
+              </div>
 
-{/* Address (Shipping only) */}
-<div style={{ marginTop: 6, fontWeight: 700, fontSize: 15 }}>
-  Shipping Address (only if “Shipping”)
-</div>
-<div>
-  <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>Address line 1</label>
-  <input name="address1" disabled={addressDisabled} required={!addressDisabled} />
-</div>
-<div>
-  <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>Address line 2</label>
-  <input name="address2" disabled={addressDisabled} />
-</div>
-<div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-  <div>
-    <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>City</label>
-    <input name="city" disabled={addressDisabled} required={!addressDisabled} />
-  </div>
-  <div>
-    <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>State</label>
-    <input name="state" disabled={addressDisabled} required={!addressDisabled} />
-  </div>
-</div>
-<div>
-  <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>Postal Code</label>
-  <input name="postal" disabled={addressDisabled} required={!addressDisabled} />
-</div>
+              {/* Address (Shipping only) */}
+              <div style={{ marginTop: 6, fontWeight: 700, fontSize: 15 }}>
+                Shipping Address (only if “Shipping”)
+              </div>
+              <div>
+                <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>Address line 1</label>
+                <input name="address1" disabled={addressDisabled} required={!addressDisabled} />
+              </div>
+              <div>
+                <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>Address line 2</label>
+                <input name="address2" disabled={addressDisabled} />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div>
+                  <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>City</label>
+                  <input name="city" disabled={addressDisabled} required={!addressDisabled} />
+                </div>
+                <div>
+                  <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>State</label>
+                  <input name="state" disabled={addressDisabled} required={!addressDisabled} />
+                </div>
+              </div>
+              <div>
+                <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>Postal Code</label>
+                <input name="postal" disabled={addressDisabled} required={!addressDisabled} />
+              </div>
 
-{/* Items */}
-<div style={{ marginTop: 6, fontWeight: 700, fontSize: 15 }}>Items</div>
-<div>
-  <label style={{ fontWeight: 600, fontSize: 14, display: 'block', marginBottom: 6 }}>
-    Choose a Bread Flavor
-  </label>
-  <select
-    value={picker}
-    onChange={(e) => {
-      const name = e.target.value;
-      setPicker(name);
-      addItemByName(name);
-      setTimeout(() => setPicker(''), 0);
-    }}
-  >
-    <option value="" disabled hidden>— Select a Bread Flavor —</option>
-    {flavors.map((f) => (
-      <option key={f.name} value={f.name}>
-        {f.name} — ${f.price.toFixed(2)}
-      </option>
-    ))}
-  </select>
-</div>
+              {/* Items */}
+              <div style={{ marginTop: 6, fontWeight: 700, fontSize: 15 }}>Items</div>
+              <div>
+                <label style={{ fontWeight: 600, fontSize: 14, display: 'block', marginBottom: 6 }}>
+                  Choose a Bread Flavor
+                </label>
+                <select
+                  value={picker}
+                  onChange={(e) => {
+                    const name = e.target.value;
+                    setPicker(name);
+                    addItemByName(name);
+                    setTimeout(() => setPicker(''), 0);
+                  }}
+                >
+                  <option value="" disabled hidden>— Select a Bread Flavor —</option>
+                  {flavors.map((f) => (
+                    <option key={f.name} value={f.name}>
+                      {f.name} — ${f.price.toFixed(2)}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-{/* Notes (optional) — the ONLY notes field, under the flavor picker */}
-<div style={{ marginTop: 12 }}>
-  <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>
-    Notes (optional)
-  </label>
-  <textarea
-    name="notes"
-    placeholder="Anything we should know"
-    rows={3}
-    maxLength={500}
-    style={{
-      width: '100%',
-      padding: '10px 12px',
-      borderRadius: 10,
-      border: '1px solid #ccc',
-      resize: 'vertical',
-      fontFamily: 'inherit',
-      fontSize: 14,
-      lineHeight: 1.4,
-    }}
-  />
-</div>
+              {/* Notes (optional) — the ONLY notes field, under the flavor picker */}
+              <div style={{ marginTop: 12 }}>
+                <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>
+                  Notes (optional)
+                </label>
+                <textarea
+                  name="notes"
+                  placeholder="Anything we should know"
+                  rows={3}
+                  maxLength={500}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: 10,
+                    border: '1px solid #ccc',
+                    resize: 'vertical',
+                    fontFamily: 'inherit',
+                    fontSize: 14,
+                    lineHeight: 1.4,
+                  }}
+                />
+              </div>
 
-{items.length > 0 && (
-  <div style={{ border: '1px solid #eee', borderRadius: 10 }}>
-    <div
-      style={{
-        display: 'grid',
-        gridTemplateColumns: '1fr 120px 80px',
-        padding: '8px 10px',
-        borderBottom: '1px solid #eee',
-        fontWeight: 600,
-      }}
-    >
-      <div>Item</div>
-      <div style={{ textAlign: 'right' }}>Qty</div>
-      <div />
-    </div>
-    {items.map((line, idx) => (
-      <div
-        key={`${line.name}-${idx}`}
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 120px 80px',
-          padding: '8px 10px',
-          alignItems: 'center',
-          borderBottom: idx < items.length - 1 ? '1px solid #f3f3f3' : 'none',
-        }}
-      >
-        <div>{line.name}</div>
-        <div style={{ textAlign: 'right' }}>
-          <input
-            type="number"
-            min={0}
-            value={line.qty}
-            onChange={(e) => setQty(idx, Math.max(0, Number(e.target.value || 0)))}
-            style={{ width: 100, textAlign: 'right' }}
-          />
-        </div>
-        <div>
-          <button
-            type="button"
-            onClick={() => removeItem(idx)}
-            style={{
-              appearance: 'none',
-              border: 'none',
-              background: '#eee',
-              color: '#333',
-              padding: '10px 12px',
-              borderRadius: 10,
-              cursor: 'pointer',
-            }}
-          >
-            Remove
-          </button>
-        </div>
-      </div>
-    ))}
-  </div>
-)}
-
+              {items.length > 0 && (
+                <div style={{ border: '1px solid #eee', borderRadius: 10 }}>
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '1fr 120px 80px',
+                      padding: '8px 10px',
+                      borderBottom: '1px solid #eee',
+                      fontWeight: 600,
+                    }}
+                  >
+                    <div>Item</div>
+                    <div style={{ textAlign: 'right' }}>Qty</div>
+                    <div />
+                  </div>
+                  {items.map((line, idx) => (
+                    <div
+                      key={`${line.name}-${idx}`}
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '1fr 120px 80px',
+                        padding: '8px 10px',
+                        alignItems: 'center',
+                        borderBottom: idx < items.length - 1 ? '1px solid #f3f3f3' : 'none',
+                      }}
+                    >
+                      <div>{line.name}</div>
+                      <div style={{ textAlign: 'right' }}>
+                        <input
+                          type="number"
+                          min={0}
+                          value={line.qty}
+                          onChange={(e) => setQty(idx, Math.max(0, Number(e.target.value || 0)))}
+                          style={{ width: 100, textAlign: 'right' }}
+                        />
+                      </div>
+                      <div>
+                        <button
+                          type="button"
+                          onClick={() => removeItem(idx)}
+                          style={{
+                            appearance: 'none',
+                            border: 'none',
+                            background: '#eee',
+                            color: '#333',
+                            padding: '10px 12px',
+                            borderRadius: 10,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {/* Total + Submit */}
               <div style={{ marginTop: 6, color: '#333' }}>
@@ -792,7 +804,7 @@ function validateOrSnapDate(el: HTMLInputElement) {
                             Open Venmo & Pay ${lastTotal}
                           </a>
                           <a
-                            href={`https://account.venmo.com/u/${VENMO_USERNAME}`}
+                            href={venmoWebLink}
                             target="_blank"
                             rel="noopener noreferrer"
                             style={{ textDecoration: 'underline', color: '#333' }}
@@ -828,3 +840,4 @@ function validateOrSnapDate(el: HTMLInputElement) {
     </div>
   );
 }
+
